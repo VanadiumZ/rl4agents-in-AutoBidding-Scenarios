@@ -3,6 +3,7 @@
     <br>
     The Application of Reinforcement Learning for Agents in Automated Bidding Scenarios
 </div>
+
 ![Python](https://img.shields.io/badge/python-3.10-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
