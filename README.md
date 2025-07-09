@@ -36,7 +36,7 @@ $$
     - 因此，智能体的**期望收益**将是 `(感知价值 * 赢得位置的CTR) - 支付成本`。
 * **预算约束 (Budget Constraint):** 每个智能体都拥有一个初始的**总预算**。每次获胜后，预算将扣除相应成本。当预算不足以支付其当前出价时，该智能体将无法参与后续的拍卖。（突然想到的NOTE: 不妨假设其中一个“保守派”的初始预算相对较少，其中一个“激进派”的初始预算相对较多）
 * **不确定性建模：**  
-  1. **价值不确定性：** 假设每次点击的“真实价值”为一个基础值 $V$，V是一个均匀分布，这个 $V$ 不妨假定是一个均匀分布，但每个智能体观察到的价值是 $V' = V + \epsilon$，其中 ε 是一个小的随机噪声（例如，正态分布的随机数）。这模拟了每个广告商对同一次点击有不同的价值评估。  
+  1. **价值不确定性：** 假设每次点击的“真实价值”为一个基础值 $V$，$V$ 是一个均匀分布，这个 $V$ 不妨假定是一个均匀分布，但每个智能体观察到的价值是 $V' = V + \epsilon$，其中 $\epsilon$ 是一个小的随机噪声（例如，正态分布的随机数）。这模拟了每个广告商对同一次点击有不同的价值评估。  
   2. **对手不确定性：** 这是天然存在的，因为智能体之间互相不知道对方的策略和出价。
 
 ### **3\. 项目实施步骤 (Methodology)**
@@ -61,10 +61,11 @@ $$
    * **逻辑：** $bid\_price = perceived\_value$。这是最简单的基准策略。  
    
 2. **“保守派”智能体 (Conservative Agent):**  
+   
    * **策略：** 目标是在整个拍卖周期内(例如1000轮)平稳地花光预算，避免“钱到用时方恨少“或“周期结束钱没花完”。
    * **逻辑：**它会根据预算消耗的“进度"来动态调整出价的系数。
      1. 计算理想平均每轮花费(ldeal Pace): $IdealPace = \frac{InitialBudget}{TotalRounds}$
-     2. 计算当前实际每轮花费(ActualPace): $ActualPace = \frac{BudgetSpent}{CurrentRound}$
+     2. 计算当前实际每轮花费(Actual Pace): $ActualPace = \frac{BudgetSpent}{CurrentRound}$
      3. 根据两个Pace对比生成一个动态调整因子$\alpha$:
         - 如果花得太慢(`ActualPace < IdealPace`)，就需要更激进一点，$\alpha$ 会大于1。
         - 如果花得太快(`ActualPace >IdealPace`)，就需要更保守一点，$\alpha$ 会小于1。
@@ -173,15 +174,18 @@ IPPO、MAPPO/MADDPG
 
 
 ```python
-/auction_sim/
-  ├── agents.py        # 各类 Agent 定义
-  ├── auction.py       # 拍卖环境封装
-  ├── runner.py        # 主流程调度
-  ├── config.py        # 超参数与实验设置
-  ├── utils.py         # 日志、绘图辅助
-  └── results/         # 实验数据与图表输出
+/rl4agents-in-AutoBidding-Scenarios
+│  README.md
+│  run.py
+│
+└─auction_sim
+    │  agents.py		# 各类 Agent 定义
+    │  auction.py		# 拍卖环境封装
+    │  config.py		# 超参数与实验设置
+    │  runner.py		# 主流程调度
+    └── results/        # 实验数据与图表输出
 
-class Agent:
+    class Agent:
     def __init__(self, id, budget, noise_std):
         self.id = id
         self.budget = budget
@@ -207,6 +211,7 @@ TruthfulAgent, ConservativeAgent(k), AggressiveAgent(m)
 | `run.py` | 入口占位，等价于 `python -m auction_sim.runner` |
 
 **快速开始**
+
 ```bash
 # 安装依赖
 pip install numpy tqdm
