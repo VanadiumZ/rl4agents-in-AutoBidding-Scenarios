@@ -32,7 +32,8 @@ class Agent(ABC):
         根据一轮拍卖的结果更新自身状态。
         """
         if result and result['won']:
-            cost = result['cost_per_click']
+            # 本轮实际花费不得超过剩余预算，防止出现负值
+            cost = min(result['cost_per_click'], self.budget)
             self.budget -= cost
         else:
             cost = 0.0

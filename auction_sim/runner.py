@@ -56,14 +56,18 @@ def main():
             # 检查预算是否充足
             if agent.budget > 0:
                 perceived_value = agent.perceive(true_value)
-                perceived_values[agent.id] = perceived_value
-                bids[agent.id] = agent.bid(perceived_value)
+                bid_price = agent.bid(perceived_value)
+
+                # 预算不足以覆盖本轮出价时选择弃权，以避免后续出现负预算
+                if agent.budget >= bid_price:
+                    perceived_values[agent.id] = perceived_value
+                    bids[agent.id] = bid_price
 
         # 3. 运行拍卖
-        if not bids:
-            print("All agents are out of budget. Ending simulation early.")
-            break
-        auction_results = auction.run_auction(bids)
+        if bids:
+            auction_results = auction.run_auction(bids)
+        else:
+            auction_results = {}  # 本轮无人出价
 
         # 4. 更新所有智能体状态
         for agent in agents:

@@ -1,14 +1,15 @@
 import numpy as np
 
 # --- 模拟环境核心设置 ---
-SIMULATION_ROUNDS = 1000  # 总共进行的拍卖轮次
+SIMULATION_ROUNDS = 16000  # 总共进行的拍卖轮次
 N_SLOTS = 2  # 广告位的数量
 CTR_POSITIONS = np.array([0.7, 0.3])  # 各个广告位的平均点击率
 CTR_NOISE_STD = 0.05  # CTR的噪声标准差 (模拟±5%的扰动)
 
 # --- 价值与预算设置 ---
-TRUE_VALUE_RANGE = (0.5, 2.5)  # 真实价值V的均匀分布范围
-AGENT_BUDGET = 100.0  # 智能体的初始预算
+TRUE_VALUE_RANGE = (0.5, 10.0)  # 真实价值V的均匀分布范围
+AGENT_BUDGET = 30000.0  # 智能体的初始预算
+# 可以设置为[20000, 30000, 40000]，分别对应三种不同的实验
 AGENT_PERCEPTION_NOISE_STD = 0.1  # 智能体对价值感知噪声的标准差 (ε)
 
 # --- 规则智能体参数 ---
@@ -30,8 +31,8 @@ Type可以是 'Truthful', 'Conservative', 'Aggressive', 'Learning'
 EXPERIMENT_SETUP = {
     'k': 0,
     'agents': [
-        {'type': 'Conservative', 'count': 2, 'budget': 100.0},
-        {'type': 'Aggressive', 'count': 2, 'budget': 120.0},
-        # {'type': 'Truthful', 'count': 2, 'budget': 100.0}, # 可以任意组合
+        {'type': 'Conservative', 'count': 2, 'budget': AGENT_BUDGET},
+        {'type': 'Aggressive', 'count': 2, 'budget': AGENT_BUDGET},
+        {'type': 'Truthful', 'count': 2, 'budget': AGENT_BUDGET}, # 可以任意组合
     ]
 }
