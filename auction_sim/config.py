@@ -10,7 +10,7 @@ CTR_NOISE_STD = 0.05  # CTR的噪声标准差 (模拟±5%的扰动)
 TRUE_VALUE_RANGE = (0.5, 10.0)  # 真实价值V的均匀分布范围
 AGENT_BUDGET = 30000.0  # 智能体的初始预算
 # 可以设置为[20000, 30000, 40000]，分别对应三种不同的实验
-AGENT_PERCEPTION_NOISE_STD = 0.1  # 智能体对价值感知噪声的标准差 (ε)
+AGENT_PERCEPTION_NOISE_STD = 0.5  # 智能体对价值感知噪声的标准差 (ε)
 
 # --- 规则智能体参数 ---
 # “保守派”智能体平滑因子
