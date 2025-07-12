@@ -9,9 +9,28 @@ class GSPAuction:
     """
     def __init__(self, n_slots: int, ctr_positions: np.ndarray, ctr_noise_std: float):
         self.n_slots = n_slots
-        self.ctr_positions = ctr_positions
+        
+        # 确保CTR_POSITIONS数组长度与N_SLOTS匹配
+        if len(ctr_positions) != n_slots:
+            if len(ctr_positions) < n_slots:
+                # 如果CTR数组太短，用递减值填充
+                print(f"Warning: CTR_POSITIONS length ({len(ctr_positions)}) < N_SLOTS ({n_slots})")
+                additional_ctrs = []
+                last_ctr = ctr_positions[-1]
+                step = last_ctr / (n_slots - len(ctr_positions) + 1)
+                for i in range(n_slots - len(ctr_positions)):
+                    last_ctr -= step
+                    additional_ctrs.append(max(0.1, last_ctr))  # 最小CTR为0.1
+                self.ctr_positions = np.concatenate([ctr_positions, additional_ctrs])
+            else:
+                # 如果CTR数组太长，截取前n_slots个
+                print(f"Warning: CTR_POSITIONS length ({len(ctr_positions)}) > N_SLOTS ({n_slots}), truncating")
+                self.ctr_positions = ctr_positions[:n_slots]
+        else:
+            self.ctr_positions = ctr_positions
+            
         self.ctr_noise_std = ctr_noise_std
-        print(f"GSP Auction initialized with {n_slots} slots.")
+        print(f"GSP Auction initialized with {n_slots} slots, CTR: {self.ctr_positions}")
 
     def run_auction(self, bids: Dict[str, float]) -> Dict[str, Dict]:
         """
