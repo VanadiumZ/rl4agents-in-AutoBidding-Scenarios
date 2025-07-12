@@ -1,3 +1,4 @@
+# /auction_sim/config.py
 import numpy as np
 
 # --- 模拟环境核心设置 ---
