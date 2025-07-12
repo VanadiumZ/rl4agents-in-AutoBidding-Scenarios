@@ -1,3 +1,4 @@
+# /auction_sim/agents.py
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import Dict
@@ -27,24 +28,46 @@ class Agent(ABC):
         """
         pass
 
-    def update(self, result: Dict, round_num: int):
+    def can_afford_bid(self, bid_price: float) -> bool:
+        """检查智能体是否有足够预算支付出价"""
+        return self.budget >= bid_price
+
+    def update(self, result: Dict, round_num: int, true_value: float = None, profit: float = None):
         """
         根据一轮拍卖的结果更新自身状态。
         """
         if result and result['won']:
-            # 本轮实际花费不得超过剩余预算，防止出现负值
-            cost = min(result['cost_per_click'], self.budget)
+            # Cost_t应该是 cost-per-click * CTR
+            expected_cost = result['cost_per_click'] * result['slot_ctr']
+            cost = min(expected_cost, self.budget)
             self.budget -= cost
         else:
             cost = 0.0
         
-        # 记录本轮数据
+        # 记录本轮数据，包括利润
         self.history.append({
             'round': round_num,
             'result': result,
             'cost': cost,
             'budget': self.budget,
+            'true_value': true_value,
+            'profit': profit if profit is not None else 0.0,
         })
+
+    def get_cumulative_profit(self) -> float:
+        """计算累计利润"""
+        return sum(record['profit'] for record in self.history)
+    
+    def get_total_cost(self) -> float:
+        """计算总花费"""
+        return sum(record['cost'] for record in self.history)
+    
+    def get_roi(self) -> float:
+        """计算ROI = 累计利润 / 累计成本 * 100%"""
+        total_cost = self.get_total_cost()
+        if total_cost == 0:
+            return 0.0
+        return (self.get_cumulative_profit() / total_cost) * 100
 
     def __repr__(self):
         return f"{self.__class__.__name__}(id={self.id}, budget={self.budget:.2f})"
@@ -108,8 +131,8 @@ class AggressiveAgent(Agent):
 
         return perceived_value * self.beta
 
-    def update(self, result: Dict, round_num: int):
-        super().update(result, round_num)
+    def update(self, result: Dict, round_num: int, true_value: float = None, profit: float = None):
+        super().update(result, round_num, true_value, profit)
         self.win_history.append(1 if result and result['won'] else 0)
 
 # --- 学习智能体 (框架) ---
@@ -165,11 +188,11 @@ class LearningAgent(Agent):
         # return bid_price
         pass
     
-    def update(self, result: Dict, round_num: int):
+    def update(self, result: Dict, round_num: int, true_value: float = None, profit: float = None):
         """
         更新智能体状态，并将 (s, a, r, s') 存入经验池。
         """
-        super().update(result, round_num)
+        super().update(result, round_num, true_value, profit)
         # TODO:
         # 1. 计算奖励 R
         # 2. 获取下一个状态 S'
