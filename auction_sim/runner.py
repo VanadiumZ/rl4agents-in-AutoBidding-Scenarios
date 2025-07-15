@@ -1,16 +1,24 @@
 # /auction_sim/runner.py
 import numpy as np
 import random
+import os
 from tqdm import tqdm
 from . import config
 from .auction import GSPAuction
-from .agents import Agent, TruthfulAgent, ConservativeAgent, AggressiveAgent, LearningAgent
+from .agents import Agent, TruthfulAgent, ConservativeAgent, AggressiveAgent, LearningAgent, DDPGLearningAgent
+from .training_monitor import TrainingMonitor
 
 def create_agents_from_config():
     """根据config中的设置创建智能体列表"""
     agents = []
     agent_id_counter = 0
     total_agents = sum(spec['count'] for spec in config.EXPERIMENT_SETUP['agents'])
+    
+    # 创建模型和监控器保存目录
+    models_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models')
+    logs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+    os.makedirs(models_dir, exist_ok=True)
+    os.makedirs(logs_dir, exist_ok=True)
 
     for spec in config.EXPERIMENT_SETUP['agents']:
         for _ in range(spec['count']):
@@ -25,7 +33,32 @@ def create_agents_from_config():
                 agents.append(AggressiveAgent(agent_id, spec['budget'], config.AGENT_PERCEPTION_NOISE_STD, total_agents))
             elif spec['type'] == 'Learning':
                 # k > 0 时会创建学习智能体
-                agents.append(LearningAgent(agent_id, spec['budget'], config.AGENT_PERCEPTION_NOISE_STD))
+                # 创建训练监控器
+                algorithm = 'DDPG' if hasattr(config, 'RL_ALGORITHM') and config.RL_ALGORITHM == 'DDPG' else 'PPO'
+                monitor = TrainingMonitor(
+                    agent_id=agent_id,
+                    algorithm=algorithm,
+                    log_dir=os.path.join(logs_dir, f"{agent_id}_{algorithm}"),
+                    model_dir=os.path.join(models_dir, f"{agent_id}_{algorithm}")
+                )
+                
+                # 根据配置选择使用PPO或DDPG算法
+                if hasattr(config, 'RL_ALGORITHM') and config.RL_ALGORITHM == 'DDPG':
+                    agents.append(DDPGLearningAgent(
+                        agent_id, 
+                        spec['budget'], 
+                        config.AGENT_PERCEPTION_NOISE_STD,
+                        monitor=monitor
+                    ))
+                    print(f"Created DDPGLearningAgent: {agent_id} with TrainingMonitor")
+                else:
+                    agents.append(LearningAgent(
+                        agent_id, 
+                        spec['budget'], 
+                        config.AGENT_PERCEPTION_NOISE_STD,
+                        monitor=monitor
+                    ))
+                    print(f"Created PPO LearningAgent: {agent_id} with TrainingMonitor")
             else:
                 raise ValueError(f"Unknown agent type: {spec['type']}")
     
@@ -83,7 +116,19 @@ def main():
             # 更新智能体状态，传递真实价值和利润信息
             agent.update(result, round_num, true_value=true_value, profit=profit)
 
-    # 3. 结果分析
+    # 3. 保存训练监控器数据并生成训练曲线
+    learning_agents = [agent for agent in agents if isinstance(agent, (LearningAgent, DDPGLearningAgent))]
+    if learning_agents:
+        print("\n--- Saving Training Data and Generating Plots ---")
+        for agent in learning_agents:
+            if hasattr(agent, 'monitor') and agent.monitor is not None:
+                # 保存训练数据
+                agent.monitor.save_metrics()
+                # 生成训练曲线
+                agent.monitor.plot_training_curves()
+                print(f"Training data and plots saved for {agent.id}")
+    
+    # 4. 结果分析
     print("\n--- Simulation Finished ---")
     print("Final Results:")
     print(f"{'Agent ID':<20} | {'Budget Left':<12} | {'Total Cost':<12} | {'Win Count':<10} | {'Cumulative Profit':<18} | {'ROI (%)':<10}")

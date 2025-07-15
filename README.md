@@ -4,6 +4,16 @@
     The Application of Reinforcement Learning for Agents in Automated Bidding Scenarios
 </div>
 
+## 项目更新说明
+
+本项目已进行重要更新，增加了以下功能：
+
+1. **多种强化学习算法支持**：现在支持PPO（近端策略优化）和DDPG（深度确定性策略梯度）两种算法
+2. **经验回放缓冲区**：为学习智能体添加了ReplayBuffer，提高训练效率
+3. **训练监控与可视化**：新增TrainingMonitor类，用于记录和可视化训练过程
+4. **算法比较工具**：新增compare_algorithms.py，用于比较不同算法的性能
+5. **超参数调优**：新增hyperparameter_tuning.py，用于寻找最优参数组合
+
 ![Python](https://img.shields.io/badge/python-3.10-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -79,7 +89,7 @@ $$
      - 如果当前胜率高于目标，说明最近有点“上头”，可以稍微冷静一下。$\beta$ 会约等于1。
      - **最终出价**：$$bid\_price=perceived\_value \times \beta = perceived\_value \times (1.0 + \lambda(target\_win\_rate - current\_win\_rate))$$
    
-4. **“自适应”学习智能体 (Simple Adaptive Agent):**  
+4. **"自适应"学习智能体 (Learning Agent):**  
    * **策略：** **这是项目的核心！**这需要我们定义强化学习的核心三要素：**状态（State）、动作（Action）、奖励（Reward）**。
    
    * **强化学习问题定义 (MDP Formulation)**
@@ -91,13 +101,22 @@ $$
        - `remaining_budget_ratio`: 剩余预算 / 初始预算。这对于预算控制至关重要。
        - `time_ratio`: 剩余轮次 / 总轮次。这告诉智能体时间的紧迫性。
        - `recent_win_rate`: 最近 N 轮的胜率。反映了近期的竞争激烈程度。
-       - `recent_avg_profit_per_win`: 最近 N 轮平均每次获胜的利润。反映了出价是否“过高”。
+       - `recent_avg_profit_per_win`: 最近 N 轮平均每次获胜的利润。反映了出价是否"过高"。
    
      - **动作 (Action, A)：** **连续动作空间：** 动作直接是出价金额 `bid`。Actor的输出通常是经过 `tanh` 激活函数的，范围在 `[-1, 1]` 之间。我们必须必须将其缩放到一个有意义的出价范围！
    
-     - **奖励 (Reward, R)：** 
-   
-       - 这里很Tricky，Reward设计对它而言至关重要!!!
+     - **奖励 (Reward, R)：** 复合奖励函数，考虑三个方面：
+       - `profit_reward`: 利润奖励，基于当前轮次的利润
+       - `pacing_reward`: 预算节奏奖励，鼓励智能体均匀使用预算
+       - `efficiency_reward`: 成本效率奖励，鼓励智能体提高ROI
+       
+     - **算法选择：** 项目支持两种强化学习算法：
+       - **PPO (近端策略优化)**: 基于策略梯度的算法，通过限制策略更新幅度提高稳定性
+       - **DDPG (深度确定性策略梯度)**: 结合DQN和策略梯度的算法，适用于连续动作空间
+       
+     - **经验回放：** 两种算法都使用ReplayBuffer存储和采样经验，提高训练效率
+       
+     - **训练监控：** 使用TrainingMonitor记录和可视化训练过程，包括累积奖励、胜率、出价/价值比等指标
    
        - **方案一：直接利润奖励**
    
@@ -202,24 +221,82 @@ IPPO、MAPPO/MADDPG
 TruthfulAgent, ConservativeAgent(k), AggressiveAgent(m)
 ```
 
-### **5\. 现有基础代码一览（Quick Code Tour）**
+### **5\. 新增功能使用指南**
+
+#### **5.1 选择强化学习算法**
+
+项目现在支持两种强化学习算法：PPO和DDPG。可以在`config.py`中通过设置`RL_ALGORITHM`参数来选择使用哪种算法：
+
+```python
+# 选择强化学习算法，可选值：'PPO'或'DDPG'
+RL_ALGORITHM = 'PPO'  # 或 'DDPG'
+```
+
+#### **5.2 使用经验回放缓冲区**
+
+为了提高训练效率，项目为学习智能体添加了`ReplayBuffer`类，用于存储和采样经验数据。这个功能已经集成到`LearningAgent`和`DDPGLearningAgent`中，无需额外配置。
+
+#### **5.3 训练监控与可视化**
+
+项目新增了`TrainingMonitor`类，用于记录和可视化训练过程。训练监控器会自动记录以下指标：
+
+- 累积奖励
+- 胜率
+- 出价/价值比
+- 剩余预算比
+- 利润和ROI
+
+训练曲线会自动保存在`logs`目录下，每100轮训练会自动生成一次图表。
+
+#### **5.4 比较不同算法的性能**
+
+使用`compare_algorithms.py`可以比较PPO和DDPG算法在各种指标上的性能差异：
+
+```bash
+# 比较不同算法的性能
+python -m auction_sim.compare_algorithms
+```
+
+比较结果会以图表形式保存在`comparison_results`目录下。
+
+#### **5.5 超参数调优**
+
+使用`hyperparameter_tuning.py`可以对强化学习算法的超参数进行网格搜索，找到最优的参数组合：
+
+```bash
+# 运行超参数调优
+python -m auction_sim.hyperparameter_tuning
+```
+
+调优结果会保存在`tuning_results`目录下，包括最佳参数组合和性能指标。
+
+### **6\. 现有基础代码一览（Quick Code Tour）**
 
 | 目录/文件 | 作用简述 |
-|-----------|---------|
-| `auction_sim/agents.py` | ① 定义抽象基类 `Agent`（统一接口：`perceive()` / `bid()` / `update()`）<br/>② 已实现三种规则智能体：`TruthfulAgent`、`ConservativeAgent`、`AggressiveAgent`<br/>③ `LearningAgent` 框架留好接口，等待接入 PPO / DDPG 等强化学习算法 |
+|-----------|---------||
+| `auction_sim/agents.py` | ① 定义抽象基类 `Agent`（统一接口：`perceive()` / `bid()` / `update()`）<br/>② 已实现三种规则智能体：`TruthfulAgent`、`ConservativeAgent`、`AggressiveAgent`<br/>③ 实现了支持PPO和DDPG的`LearningAgent`和`DDPGLearningAgent`，包含经验回放和训练监控功能 |
 | `auction_sim/auction.py` | 实现 **广义第二价格拍卖** (`GSPAuction`)：排序、扣费、带噪 CTR 计算 |
-| `auction_sim/runner.py` | 主模拟脚本：解析 `config.py` → 创建智能体 → 循环 N 轮拍卖 → 收集并打印结果 |
-| `auction_sim/config.py` | 全局超参（拍卖轮数、CTR、**`AGENT_BUDGET` 默认 30 000**、各类智能体数量…）——改这里即可做不同实验 |
+| `auction_sim/runner.py` | 主模拟脚本：解析 `config.py` → 创建智能体 → 循环 N 轮拍卖 → 收集并打印结果，支持训练监控和模型保存 |
+| `auction_sim/config.py` | 全局超参（拍卖轮数、CTR、**`AGENT_BUDGET` 默认 30 000**、各类智能体数量、强化学习算法选择…）——改这里即可做不同实验 |
+| `auction_sim/training_monitor.py` | 训练监控器：记录训练指标、保存模型、生成训练曲线 |
+| `auction_sim/compare_algorithms.py` | 算法比较工具：对比PPO和DDPG在各项指标上的性能 |
+| `auction_sim/hyperparameter_tuning.py` | 超参数调优工具：使用网格搜索寻找最优参数组合 |
 | `run.py` | 入口占位，等价于 `python -m auction_sim.runner` |
 
 **快速开始**
 
 ```bash
 # 安装依赖
-pip install numpy tqdm
+pip install numpy tqdm torch stable-baselines3 matplotlib pandas tensorboard
 
 # 运行基准模拟（k=0 已在 config.py 中预设）
 python -m auction_sim.runner
+
+# 运行算法比较
+python -m auction_sim.compare_algorithms
+
+# 运行超参数调优
+python -m auction_sim.hyperparameter_tuning
 ```
 若要调整智能体组合/数量/预算，只需修改 `config.EXPERIMENT_SETUP`。
 

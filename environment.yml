@@ -1,0 +1,15 @@
+name: auction-sim
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - numpy
+  - pandas
+  - matplotlib
+  - tqdm
+  - pip
+  - pip:
+    - gym
+    - stable-baselines3
+    - torch
