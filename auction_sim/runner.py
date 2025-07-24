@@ -4,7 +4,8 @@ import random
 from tqdm import tqdm
 from . import config
 from .auction import GSPAuction
-from .agents import Agent, TruthfulAgent, ConservativeAgent, AggressiveAgent, LearningAgent
+from .agents import Agent, TruthfulAgent, ConservativeAgent, AggressiveAgent, LearningAgent, MultiAgentLearningAgent
+from .utils import generate_all_visualizations
 
 def create_agents_from_config():
     """根据config中的设置创建智能体列表"""
@@ -25,6 +26,8 @@ def create_agents_from_config():
                 agents.append(AggressiveAgent(agent_id, spec['budget'], config.AGENT_PERCEPTION_NOISE_STD, total_agents))
             elif spec['type'] == 'Learning':
                 # k > 0 时会创建学习智能体
+                # 这里创建基础的LearningAgent作为占位符
+                # 对于k=2，请使用 ma_runner.py 进行多智能体训练
                 agents.append(LearningAgent(agent_id, spec['budget'], config.AGENT_PERCEPTION_NOISE_STD))
             else:
                 raise ValueError(f"Unknown agent type: {spec['type']}")
@@ -103,6 +106,19 @@ def main():
             f"{cumulative_profit:8.2f}          | "
             f"{roi:8.2f}"
         )
+
+    # 4. 生成所有可视化图表
+    print("\n" + "="*50)
+    print("GENERATING VISUALIZATIONS...")
+    print("="*50)
+    
+    try:
+        generate_all_visualizations(agents)
+        print("\n✅ All visualizations generated successfully!")
+    except Exception as e:
+        print(f"\n❌ Error generating visualizations: {e}")
+        print("You may need to install matplotlib, pandas, and scipy:")
+        print("pip install matplotlib pandas scipy")
 
 if __name__ == '__main__':
     main()

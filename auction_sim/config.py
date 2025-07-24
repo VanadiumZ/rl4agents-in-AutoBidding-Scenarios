@@ -24,16 +24,56 @@ AGGRESSIVE_AGENT_LAMBDA = 0.5  # 调整出价的敏感度 λ
 """
 --- 实验配置 ---
 下面你可以根据这个配置来动态创建智能体
-这是一个 k=0 的示例配置
+支持 k=0 (规则智能体), k=1 (单智能体RL), k=2 (多智能体RL)
 格式: {'type': 'AgentType', 'count': N, 'budget': B}
 Type可以是 'Truthful', 'Conservative', 'Aggressive', 'Learning'
 """
 
-EXPERIMENT_SETUP = {
+# k=0: 规则智能体对照实验
+EXPERIMENT_SETUP_K0 = {
     'k': 0,
     'agents': [
-        {'type': 'Conservative', 'count': 2, 'budget': AGENT_BUDGET},
-        {'type': 'Aggressive', 'count': 2, 'budget': AGENT_BUDGET},
-        {'type': 'Truthful', 'count': 2, 'budget': AGENT_BUDGET},
+        {'type': 'Conservative', 'count': 1, 'budget': AGENT_BUDGET},
+        {'type': 'Aggressive', 'count': 1, 'budget': AGENT_BUDGET},
+        {'type': 'Truthful', 'count': 1, 'budget': AGENT_BUDGET},
     ]
+}
+
+# k=1: 单智能体强化学习 (1个学习智能体 + 规则对手)
+EXPERIMENT_SETUP_K1 = {
+    'k': 1,
+    'agents': [
+        {'type': 'Learning', 'count': 1, 'budget': AGENT_BUDGET},
+        {'type': 'Conservative', 'count': 1, 'budget': AGENT_BUDGET},
+        {'type': 'Aggressive', 'count': 1, 'budget': AGENT_BUDGET},
+        {'type': 'Truthful', 'count': 1, 'budget': AGENT_BUDGET},
+    ]
+}
+
+# k=2: 多智能体强化学习 (2个学习智能体 + 规则对手)
+EXPERIMENT_SETUP_K2 = {
+    'k': 2,
+    'agents': [
+        {'type': 'Learning', 'count': 2, 'budget': AGENT_BUDGET},
+        {'type': 'Conservative', 'count': 1, 'budget': AGENT_BUDGET},
+        {'type': 'Aggressive', 'count': 1, 'budget': AGENT_BUDGET},
+        {'type': 'Truthful', 'count': 1, 'budget': AGENT_BUDGET},
+    ]
+}
+
+# 当前实验设置 (可以切换 K0/K1/K2)
+EXPERIMENT_SETUP = EXPERIMENT_SETUP_K2  # 切换这里来改变实验类型
+
+# 多智能体专用设置
+MULTI_AGENT_TRAINING = {
+    'n_episodes': 300,           # 训练轮数
+    'max_steps_per_episode': SIMULATION_ROUNDS,  # 每轮最大步数
+    'learning_rate': 3e-4,       # 学习率
+    'gamma': 0.99,               # 折扣因子
+    'gae_lambda': 0.95,          # GAE参数
+    'clip_ratio': 0.2,           # PPO裁剪比率
+    'update_epochs': 4,          # 每次更新的轮数
+    'batch_size': 64,            # 批量大小
+    'save_interval': 50,         # 模型保存间隔
+    'eval_interval': 100,        # 评估间隔
 }
