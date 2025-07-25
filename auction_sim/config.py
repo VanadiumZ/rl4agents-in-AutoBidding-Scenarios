@@ -2,6 +2,7 @@ import numpy as np
 
 # --- 模拟环境核心设置 ---
 SIMULATION_ROUNDS = 16000  # 总共进行的拍卖轮次
+TRAINING_EPISODES = 200  # Increased from 50 for better convergence
 N_SLOTS = 2  # 广告位的数量
 CTR_POSITIONS = np.array([0.7, 0.3])  # 各个广告位的平均点击率
 CTR_NOISE_STD = 0.05  # CTR的噪声标准差 (模拟±5%的扰动)

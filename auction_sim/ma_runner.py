@@ -251,7 +251,7 @@ def run_full_experiment():
     os.makedirs("auction_sim/models", exist_ok=True)
     
     # Training phase
-    trainer, learning_agents, rule_agents = train_multi_agent(n_episodes=50)  # Reduced for testing
+    trainer, learning_agents, rule_agents = train_multi_agent(n_episodes=config.TRAINING_EPISODES)
     
     # Evaluation phase
     avg_rewards, avg_win_rates = evaluate_trained_agents(trainer, n_eval_episodes=3)
