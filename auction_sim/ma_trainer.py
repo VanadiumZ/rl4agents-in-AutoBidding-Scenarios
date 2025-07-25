@@ -1,7 +1,12 @@
 # /auction_sim/ma_trainer.py
 """
+<<<<<<< HEAD
 Multi-Agent Training Module using MAPPO/IPPO
 Handles k=2 scenario with 2 learning agents competing with rule-based agents
+=======
+Multi-Agent PPO Trainer for k=2 scenario
+Fixed for stable training with corrected reward signals
+>>>>>>> f7ba83f (Update multi-env)
 """
 import numpy as np
 import torch
@@ -18,10 +23,14 @@ from .ma_environment import MultiAgentAuctionEnv
 from .agents import TruthfulAgent, ConservativeAgent, AggressiveAgent, MultiAgentLearningAgent
 
 class ActorCriticNetwork(nn.Module):
+<<<<<<< HEAD
     """
     Actor-Critic network for MAPPO
     Shared backbone with separate actor and critic heads
     """
+=======
+    """Actor-Critic network for MAPPO"""
+>>>>>>> f7ba83f (Update multi-env)
     
     def __init__(self, obs_dim: int, action_dim: int, hidden_dim: int = 128):
         super().__init__()
@@ -38,8 +47,12 @@ class ActorCriticNetwork(nn.Module):
         
         # Actor head (policy)
         self.actor_linear = nn.Linear(hidden_dim, action_dim)
+<<<<<<< HEAD
         self.actor_activation = nn.Sigmoid()  # Output in [0,1], will be scaled
         
+=======
+        self.actor_activation = nn.Sigmoid()
+>>>>>>> f7ba83f (Update multi-env)
         self.actor_logstd = nn.Parameter(torch.zeros(action_dim))
         
         # Critic head (value function)
@@ -47,7 +60,10 @@ class ActorCriticNetwork(nn.Module):
             nn.Linear(hidden_dim, 1)
         )
         
+<<<<<<< HEAD
         # Initialize weights for stable training
+=======
+>>>>>>> f7ba83f (Update multi-env)
         self._initialize_weights()
     
     def _initialize_weights(self):
@@ -58,7 +74,10 @@ class ActorCriticNetwork(nn.Module):
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0.0)
         
+<<<<<<< HEAD
         # Initialize actor output layer with smaller weights
+=======
+>>>>>>> f7ba83f (Update multi-env)
         nn.init.orthogonal_(self.actor_linear.weight, gain=0.01)
         
     def forward(self, obs):
@@ -67,7 +86,11 @@ class ActorCriticNetwork(nn.Module):
         # Actor output
         mean = self.actor_linear(features)
         mean = self.actor_activation(mean)
+<<<<<<< HEAD
         mean = 0.5 + mean * 1.0  # Scale to [0.5, 1.5] - more reasonable bidding range
+=======
+        mean = 0.5 + mean * 1.0  # Scale to [0.5, 1.5]
+>>>>>>> f7ba83f (Update multi-env)
         std = torch.exp(self.actor_logstd)
         
         # Critic output
@@ -97,9 +120,13 @@ class ActorCriticNetwork(nn.Module):
         return log_prob, entropy, value
 
 class MAPPOTrainer:
+<<<<<<< HEAD
     """
     Multi-Agent PPO Trainer for auction environment
     """
+=======
+    """Multi-Agent PPO Trainer for auction environment"""
+>>>>>>> f7ba83f (Update multi-env)
     
     def __init__(self, 
                  obs_dim: int = 7,
@@ -112,7 +139,11 @@ class MAPPOTrainer:
                  vf_coef: float = 0.5,
                  ent_coef: float = 0.01,
                  max_grad_norm: float = 0.5,
+<<<<<<< HEAD
                  max_buffer_size: int = 50000):  # Increase buffer for longer episodes
+=======
+                 max_buffer_size: int = 50000):
+>>>>>>> f7ba83f (Update multi-env)
         
         self.n_agents = n_agents
         self.obs_dim = obs_dim
@@ -162,11 +193,17 @@ class MAPPOTrainer:
     
     def get_action(self, agent_id: str, obs: np.ndarray, deterministic: bool = False):
         """Get action from policy network"""
+<<<<<<< HEAD
         # Ensure obs is numpy array with correct shape
         if not isinstance(obs, np.ndarray):
             obs = np.array(obs)
         
         # Ensure correct dimensions
+=======
+        if not isinstance(obs, np.ndarray):
+            obs = np.array(obs)
+        
+>>>>>>> f7ba83f (Update multi-env)
         if obs.ndim == 0:
             obs = obs.reshape(1,)
         
@@ -179,14 +216,21 @@ class MAPPOTrainer:
     
     def store_experience(self, agent_id: str, obs, action, reward, value, log_prob, done):
         """Store experience in buffer with size limit"""
+<<<<<<< HEAD
         # Check if buffer is at max capacity
         if len(self.buffers[agent_id]['observations']) >= self.max_buffer_size:
             # Remove oldest experiences (FIFO)
+=======
+        if len(self.buffers[agent_id]['observations']) >= self.max_buffer_size:
+>>>>>>> f7ba83f (Update multi-env)
             for key in self.buffers[agent_id]:
                 if isinstance(self.buffers[agent_id][key], list):
                     self.buffers[agent_id][key].pop(0)
         
+<<<<<<< HEAD
         # Add new experience
+=======
+>>>>>>> f7ba83f (Update multi-env)
         self.buffers[agent_id]['observations'].append(obs)
         self.buffers[agent_id]['actions'].append(action)
         self.buffers[agent_id]['rewards'].append(reward)
@@ -221,18 +265,29 @@ class MAPPOTrainer:
         advantages = torch.FloatTensor(advantages)
         returns = torch.FloatTensor(returns)
         
+<<<<<<< HEAD
         # Normalize advantages with numerical stability
+=======
+        # Normalize advantages
+>>>>>>> f7ba83f (Update multi-env)
         adv_mean = advantages.mean()
         adv_std = advantages.std()
         if adv_std > 0:
             advantages = (advantages - adv_mean) / (adv_std + 1e-8)
         else:
+<<<<<<< HEAD
             # If all advantages are the same (very rare), don't normalize
+=======
+>>>>>>> f7ba83f (Update multi-env)
             advantages = advantages - adv_mean
         
         # Multiple epochs of updates
         n_updates = 4
+<<<<<<< HEAD
         batch_size = min(256, len(obs))  # Larger batch size for longer episodes
+=======
+        batch_size = min(256, len(obs))
+>>>>>>> f7ba83f (Update multi-env)
         
         for _ in range(n_updates):
             # Sample mini-batch
@@ -256,7 +311,10 @@ class MAPPOTrainer:
             actor_loss = -torch.min(surr1, surr2).mean()
             
             # Value loss
+<<<<<<< HEAD
             # Handle potential dimension mismatch between values and returns
+=======
+>>>>>>> f7ba83f (Update multi-env)
             if values.dim() > returns_batch.dim():
                 values = values.squeeze(-1)
             elif values.dim() < returns_batch.dim():
@@ -285,7 +343,11 @@ class MAPPOTrainer:
             for key in self.buffers[agent_id]:
                 self.buffers[agent_id][key] = []
     
+<<<<<<< HEAD
     def train_episode(self, env: MultiAgentAuctionEnv, max_steps: int = 1000):
+=======
+    def train_episode(self, env: MultiAgentAuctionEnv, max_steps: int = 16000):
+>>>>>>> f7ba83f (Update multi-env)
         """Train for one episode"""
         obs = env.reset()
         episode_rewards = {agent_id: 0 for agent_id in env.learning_agent_ids}
@@ -302,7 +364,11 @@ class MAPPOTrainer:
                 
                 # Calculate log probability for storage
                 obs_tensor = torch.FloatTensor(obs[agent_id]).unsqueeze(0)
+<<<<<<< HEAD
                 action_tensor = torch.FloatTensor([float(action)])  # Ensure scalar conversion
+=======
+                action_tensor = torch.FloatTensor([float(action)])
+>>>>>>> f7ba83f (Update multi-env)
                 log_prob, _, _ = self.networks[agent_id].evaluate_action(obs_tensor, action_tensor)
                 
                 actions[agent_id] = np.array([action])
@@ -323,8 +389,12 @@ class MAPPOTrainer:
                 
                 episode_rewards[agent_id] += rewards[agent_id]
                 
+<<<<<<< HEAD
                 # Track wins - check if this agent won in this round
                 # We need to check the recent history from the environment
+=======
+                # Track wins
+>>>>>>> f7ba83f (Update multi-env)
                 if hasattr(env, 'agent_histories') and agent_id in env.agent_histories:
                     if env.agent_histories[agent_id] and env.agent_histories[agent_id][-1].get('won', False):
                         episode_wins[agent_id] += 1
