@@ -1,11 +1,7 @@
 # /auction_sim/ma_environment.py
 """
 Multi-Agent Auction Environment for k=2 scenario
-<<<<<<< HEAD
-Supports MAPPO/IPPO training with shared observations and individual actions
-=======
 Fixed reward function to avoid negative training rewards
->>>>>>> f7ba83f (Update multi-env)
 """
 import numpy as np
 import gymnasium as gym
@@ -48,21 +44,12 @@ class MultiAgentAuctionEnv:
         """Setup observation and action spaces for multi-agent learning"""
         
         # Observation space for each agent (normalized values)
-<<<<<<< HEAD
-        # [perceived_value, remaining_budget_ratio, time_ratio, recent_win_rate, 
-        #  recent_avg_profit, opponent_recent_win_rate, market_competition_level]
-=======
->>>>>>> f7ba83f (Update multi-env)
         obs_low = np.array([0.0, 0.0, 0.0, 0.0, -10.0, 0.0, 0.0], dtype=np.float32)
         obs_high = np.array([1.0, 1.0, 1.0, 1.0, 10.0, 1.0, 1.0], dtype=np.float32)
         
         self.observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
         
-<<<<<<< HEAD
-        # Action space: continuous bid multiplier [0.5, 1.5] - more reasonable range
-=======
         # Action space: continuous bid multiplier [0.5, 1.5]
->>>>>>> f7ba83f (Update multi-env)
         self.action_space = spaces.Box(low=0.5, high=1.5, shape=(1,), dtype=np.float32)
         
         print(f"Multi-Agent Environment initialized:")
@@ -110,11 +97,7 @@ class MultiAgentAuctionEnv:
     def _build_observation(self, agent_id: str, perceived_value: float) -> np.ndarray:
         """Build observation vector for a specific learning agent"""
         
-<<<<<<< HEAD
-        # 1. Normalized perceived value (0-1 range based on TRUE_VALUE_RANGE)
-=======
         # 1. Normalized perceived value
->>>>>>> f7ba83f (Update multi-env)
         norm_perceived_value = (perceived_value - config.TRUE_VALUE_RANGE[0]) / \
                               (config.TRUE_VALUE_RANGE[1] - config.TRUE_VALUE_RANGE[0])
         norm_perceived_value = np.clip(norm_perceived_value, 0.0, 1.0)
@@ -122,17 +105,10 @@ class MultiAgentAuctionEnv:
         # 2. Remaining budget ratio
         budget_ratio = self.agent_budgets[agent_id] / config.AGENT_BUDGET
         
-<<<<<<< HEAD
-        # 3. Time ratio (remaining rounds / total rounds)
-        time_ratio = (self.max_rounds - self.current_round) / self.max_rounds
-        
-        # 4. Recent win rate (last 100 rounds)
-=======
         # 3. Time ratio
         time_ratio = (self.max_rounds - self.current_round) / self.max_rounds
         
         # 4. Recent win rate
->>>>>>> f7ba83f (Update multi-env)
         recent_wins = 0
         recent_rounds = min(len(self.agent_histories[agent_id]), 100)
         if recent_rounds > 0:
@@ -148,20 +124,11 @@ class MultiAgentAuctionEnv:
         if recent_rounds > 0:
             recent_history = self.agent_histories[agent_id][-recent_rounds:]
             profits = [record.get('profit', 0.0) for record in recent_history]
-<<<<<<< HEAD
-            # Ensure all profits are scalars
-            profits = [float(p) if p is not None else 0.0 for p in profits]
-            recent_profit = np.mean(profits) if profits else 0.0
-            recent_profit = np.clip(recent_profit / 10.0, -1.0, 1.0)  # Normalize to [-1,1]
-        
-        # 6. Opponent win rate (other learning agents)
-=======
             profits = [float(p) if p is not None else 0.0 for p in profits]
             recent_profit = np.mean(profits) if profits else 0.0
             recent_profit = np.clip(recent_profit / 10.0, -1.0, 1.0)
         
         # 6. Opponent win rate
->>>>>>> f7ba83f (Update multi-env)
         opponent_win_rate = 0.0
         if len(self.learning_agent_ids) > 1:
             other_agents = [aid for aid in self.learning_agent_ids if aid != agent_id]
@@ -179,15 +146,9 @@ class MultiAgentAuctionEnv:
             
             opponent_win_rate = total_wins / total_rounds if total_rounds > 0 else 0.0
         
-<<<<<<< HEAD
-        # 7. Market competition level (total agents competing)
-        total_agents = len(self.learning_agent_ids) + len(self.rule_agents)
-        competition_level = min(total_agents / 10.0, 1.0)  # Normalize to [0,1]
-=======
         # 7. Market competition level
         total_agents = len(self.learning_agent_ids) + len(self.rule_agents)
         competition_level = min(total_agents / 10.0, 1.0)
->>>>>>> f7ba83f (Update multi-env)
         
         observation = np.array([
             norm_perceived_value,
@@ -202,49 +163,26 @@ class MultiAgentAuctionEnv:
         return observation
     
     def step(self, actions: Dict[str, np.ndarray]) -> Tuple[Dict, Dict, Dict, Dict, Dict]:
-<<<<<<< HEAD
-        """
-        Execute one step in the environment
-        Returns: observations, rewards, terminated, truncated, info
-        """
-=======
         """Execute one step in the environment"""
->>>>>>> f7ba83f (Update multi-env)
         self.current_round += 1
         
         # Generate perceived values for this round
         observations = self._get_observations()
         
-<<<<<<< HEAD
-        # Collect all bids (learning agents + rule agents)
-=======
         # Collect all bids
->>>>>>> f7ba83f (Update multi-env)
         all_bids = {}
         perceived_values = {}
         
         # Learning agents bids
         for agent_id in self.learning_agent_ids:
             if agent_id in actions:
-<<<<<<< HEAD
-                # Extract perceived value from observation
-=======
->>>>>>> f7ba83f (Update multi-env)
                 obs = observations[agent_id]
                 perceived_value = obs[0] * (config.TRUE_VALUE_RANGE[1] - config.TRUE_VALUE_RANGE[0]) + config.TRUE_VALUE_RANGE[0]
                 perceived_values[agent_id] = perceived_value
                 
-<<<<<<< HEAD
-                # Scale action to bid
-                bid_multiplier = float(actions[agent_id][0])  # Ensure scalar
-                bid_price = perceived_value * bid_multiplier
-                
-                # Check budget constraint
-=======
                 bid_multiplier = float(actions[agent_id][0])
                 bid_price = perceived_value * bid_multiplier
                 
->>>>>>> f7ba83f (Update multi-env)
                 if self.agent_budgets[agent_id] >= bid_price:
                     all_bids[agent_id] = bid_price
         
@@ -283,15 +221,9 @@ class MultiAgentAuctionEnv:
             self.agent_histories[agent_id].append({
                 'round': self.current_round,
                 'won': won,
-<<<<<<< HEAD
-                'profit': float(profit) if profit is not None else 0.0,  # Ensure scalar
-                'cost': float(cost),  # Ensure scalar
-                'budget': float(self.agent_budgets[agent_id])  # Ensure scalar
-=======
                 'profit': float(profit) if profit is not None else 0.0,
                 'cost': float(cost),
                 'budget': float(self.agent_budgets[agent_id])
->>>>>>> f7ba83f (Update multi-env)
             })
         
         # Update rule agents
@@ -304,11 +236,7 @@ class MultiAgentAuctionEnv:
             else:
                 profit = 0.0
             
-<<<<<<< HEAD
-            agent.update(result, self.current_round, self.current_true_value, profit)
-=======
             agent.update(result, self.current_round)
->>>>>>> f7ba83f (Update multi-env)
         
         # Check termination conditions
         terminated = {agent_id: False for agent_id in self.learning_agent_ids}
@@ -325,21 +253,12 @@ class MultiAgentAuctionEnv:
     
     def _calculate_reward(self, agent_id: str, auction_results: Dict, perceived_value: float) -> Tuple[float, float]:
         """
-<<<<<<< HEAD
-        Calculate reward for a learning agent aligned with true objective: ROI + Profit
-        Uses difference reward: reward_t = objective_t - objective_{t-1}
-        """
-        result = auction_results.get(agent_id)
-        
-        # Calculate current round profit
-=======
         FIXED reward function that avoids negative training rewards
         Focuses on immediate profit + efficiency bonuses rather than unstable difference rewards
         """
         result = auction_results.get(agent_id)
         
         # Calculate current round profit and cost
->>>>>>> f7ba83f (Update multi-env)
         if result and result['won']:
             true_profit = self.current_true_value * result['slot_ctr']
             expected_cost = result['cost_per_click'] * result['slot_ctr']
@@ -349,38 +268,6 @@ class MultiAgentAuctionEnv:
             current_profit = 0.0
             current_cost = 0.0
         
-<<<<<<< HEAD
-        # Calculate cumulative metrics
-        cumulative_profit = sum(record.get('profit', 0.0) for record in self.agent_histories[agent_id]) + current_profit
-        cumulative_cost = sum(record.get('cost', 0.0) for record in self.agent_histories[agent_id]) + current_cost
-        
-        # Calculate current objective value (ROI + Profit)
-        if cumulative_cost > 0:
-            current_roi = (cumulative_profit / cumulative_cost) * 100.0
-        else:
-            current_roi = 0.0
-        
-        current_objective = current_roi + cumulative_profit
-        
-        # Calculate previous objective value for difference reward
-        prev_cumulative_profit = sum(record.get('profit', 0.0) for record in self.agent_histories[agent_id])
-        prev_cumulative_cost = sum(record.get('cost', 0.0) for record in self.agent_histories[agent_id])
-        
-        if prev_cumulative_cost > 0:
-            prev_roi = (prev_cumulative_profit / prev_cumulative_cost) * 100.0
-        else:
-            prev_roi = 0.0
-        
-        prev_objective = prev_roi + prev_cumulative_profit
-        
-        # Difference reward: improvement in objective
-        reward = float(current_objective - prev_objective)
-        
-        # Scale reward for numerical stability (objective can be large)
-        reward = reward / 100.0
-        
-        return reward, float(current_profit)
-=======
         # Base reward: immediate profit (positive when profitable)
         reward = current_profit
         
@@ -414,7 +301,6 @@ class MultiAgentAuctionEnv:
         reward = reward / 2.0
         
         return float(reward), float(current_profit)
->>>>>>> f7ba83f (Update multi-env)
     
     def render(self):
         """Optional rendering for debugging"""

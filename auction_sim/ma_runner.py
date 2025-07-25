@@ -1,11 +1,7 @@
 # /auction_sim/ma_runner.py
 """
 Multi-Agent Training Runner for k=2 scenario
-<<<<<<< HEAD
-Trains 2 learning agents using MAPPO against rule-based opponents
-=======
 Fixed agent configuration and reward function
->>>>>>> f7ba83f (Update multi-env)
 """
 import numpy as np
 import random
@@ -16,27 +12,14 @@ from . import config
 from .ma_environment import MultiAgentAuctionEnv
 from .ma_trainer import MAPPOTrainer
 from .agents import TruthfulAgent, ConservativeAgent, AggressiveAgent, MultiAgentLearningAgent
-<<<<<<< HEAD
-from .utils import generate_all_visualizations
-=======
->>>>>>> f7ba83f (Update multi-env)
 
 def create_rule_agents():
     """Create rule-based opponents for training"""
     rule_agents = []
-<<<<<<< HEAD
-    
-    # Create agents based on config
-    agent_id_counter = 0
-    
-    for spec in config.EXPERIMENT_SETUP['agents']:
-        if spec['type'] != 'Learning':  # Skip learning agents
-=======
     agent_id_counter = 0
     
     for spec in config.EXPERIMENT_SETUP['agents']:
         if spec['type'] != 'Learning':
->>>>>>> f7ba83f (Update multi-env)
             for _ in range(spec['count']):
                 agent_id = f"{spec['type']}_{agent_id_counter}"
                 agent_id_counter += 1
@@ -58,10 +41,6 @@ def create_learning_agents():
     learning_agents = []
     learning_agent_ids = []
     
-<<<<<<< HEAD
-    # Count learning agents in config
-=======
->>>>>>> f7ba83f (Update multi-env)
     learning_count = 0
     for spec in config.EXPERIMENT_SETUP['agents']:
         if spec['type'] == 'Learning':
@@ -74,11 +53,7 @@ def create_learning_agents():
             agent_id, 
             config.AGENT_BUDGET, 
             config.AGENT_PERCEPTION_NOISE_STD,
-<<<<<<< HEAD
-            model=None,  # Will be set by trainer
-=======
             model=None,
->>>>>>> f7ba83f (Update multi-env)
             is_training=True
         )
         learning_agents.append(agent)
@@ -86,20 +61,12 @@ def create_learning_agents():
     
     return learning_agents, learning_agent_ids
 
-<<<<<<< HEAD
-def train_multi_agent(n_episodes: int = 200, save_models: bool = True):  # Reduce episodes since each is now 16k steps
-=======
 def train_multi_agent(n_episodes: int = 100, save_models: bool = True):
->>>>>>> f7ba83f (Update multi-env)
     """
     Main training function for multi-agent scenario
     """
     print("="*60)
-<<<<<<< HEAD
-    print("MULTI-AGENT TRAINING (k=2)")
-=======
     print("MULTI-AGENT TRAINING (k=2) - FIXED VERSION")
->>>>>>> f7ba83f (Update multi-env)
     print("="*60)
     
     # Set seeds for reproducibility
@@ -122,15 +89,6 @@ def train_multi_agent(n_episodes: int = 100, save_models: bool = True):
         obs_dim=7,
         action_dim=1, 
         n_agents=len(learning_agents),
-<<<<<<< HEAD
-        lr=1e-4,  # Lower learning rate for more stable learning
-        gamma=0.95,  # Slightly lower discount factor
-        gae_lambda=0.9,  # Lower GAE lambda
-        clip_ratio=0.1,  # Smaller clip ratio for more conservative updates
-        vf_coef=0.5,
-        ent_coef=0.02,  # Higher entropy for more exploration
-        max_grad_norm=0.3  # Smaller gradient clipping
-=======
         lr=1e-4,
         gamma=0.95,
         gae_lambda=0.9,
@@ -138,17 +96,12 @@ def train_multi_agent(n_episodes: int = 100, save_models: bool = True):
         vf_coef=0.5,
         ent_coef=0.02,
         max_grad_norm=0.3
->>>>>>> f7ba83f (Update multi-env)
     )
     
     # Connect models to agents
     for i, agent in enumerate(learning_agents):
         agent_id = f"Learning_{i}"
         
-<<<<<<< HEAD
-        # Create a simple model wrapper for the agent
-=======
->>>>>>> f7ba83f (Update multi-env)
         class ModelWrapper:
             def __init__(self, network, trainer, agent_id):
                 self.network = network
@@ -170,11 +123,7 @@ def train_multi_agent(n_episodes: int = 100, save_models: bool = True):
     
     for episode in tqdm(range(n_episodes), desc="Training Episodes"):
         # Use full simulation rounds for proper training-competition alignment
-<<<<<<< HEAD
-        max_steps = config.SIMULATION_ROUNDS  # Always use full 16,000 rounds
-=======
         max_steps = config.SIMULATION_ROUNDS
->>>>>>> f7ba83f (Update multi-env)
             
         episode_rewards, episode_wins = trainer.train_episode(env, max_steps=max_steps)
         
@@ -189,11 +138,7 @@ def train_multi_agent(n_episodes: int = 100, save_models: bool = True):
                 trainer.save_models("auction_sim/models/best")
         
         # Logging
-<<<<<<< HEAD
-        if episode % 10 == 0:  # More frequent logging
-=======
         if episode % 10 == 0:
->>>>>>> f7ba83f (Update multi-env)
             recent_avg = np.mean(episode_rewards_history[-10:]) if len(episode_rewards_history) >= 10 else avg_reward
             win_rates = {aid: (episode_wins[aid] / max_steps) for aid in learning_agent_ids}
             
@@ -215,11 +160,7 @@ def train_multi_agent(n_episodes: int = 100, save_models: bool = True):
     
     return trainer, learning_agents, rule_agents
 
-<<<<<<< HEAD
-def evaluate_trained_agents(trainer: MAPPOTrainer, n_eval_episodes: int = 5):
-=======
 def evaluate_trained_agents(trainer: MAPPOTrainer, n_eval_episodes: int = 3):
->>>>>>> f7ba83f (Update multi-env)
     """
     Evaluate trained agents against rule-based opponents
     """
@@ -310,11 +251,7 @@ def run_full_experiment():
     os.makedirs("auction_sim/models", exist_ok=True)
     
     # Training phase
-<<<<<<< HEAD
-    trainer, learning_agents, rule_agents = train_multi_agent(n_episodes=100)  # Reduced since each episode is now full 16k rounds
-=======
     trainer, learning_agents, rule_agents = train_multi_agent(n_episodes=50)  # Reduced for testing
->>>>>>> f7ba83f (Update multi-env)
     
     # Evaluation phase
     avg_rewards, avg_win_rates = evaluate_trained_agents(trainer, n_eval_episodes=3)
@@ -324,13 +261,6 @@ def run_full_experiment():
     print("RUNNING FINAL SIMULATION")
     print("="*50)
     
-<<<<<<< HEAD
-    # Simply use the rule agents from the evaluation phase (they have full history)
-    # For learning agents, we'll run a quick simulation to populate their history
-    
-    # Get learning agent IDs from the training
-=======
->>>>>>> f7ba83f (Update multi-env)
     learning_agent_ids = [agent.id for agent in learning_agents]
     
     env = MultiAgentAuctionEnv(learning_agent_ids, rule_agents)
@@ -354,23 +284,12 @@ def run_full_experiment():
         next_obs, rewards, terminated, truncated, info = env.step(actions)
         obs = next_obs
         
-<<<<<<< HEAD
-        # Check if episode is done
-        if any(terminated.values()) or any(truncated.values()):
-            break
-    
-    # Create final agents with populated histories from the simulation
-    final_learning_agents = []
-    for i, agent_id in enumerate(learning_agent_ids):
-        # Create a new agent and copy the history from the environment
-=======
         if any(terminated.values()) or any(truncated.values()):
             break
     
     # Create final agents with populated histories
     final_learning_agents = []
     for i, agent_id in enumerate(learning_agent_ids):
->>>>>>> f7ba83f (Update multi-env)
         agent = MultiAgentLearningAgent(
             agent_id,
             config.AGENT_BUDGET,
@@ -378,10 +297,6 @@ def run_full_experiment():
             is_training=False
         )
         
-<<<<<<< HEAD
-        # Copy history from environment agent histories
-        agent.history = env.agent_histories[agent_id].copy()
-=======
         # Copy history from environment
         agent.history = []
         for record in env.agent_histories[agent_id]:
@@ -391,27 +306,10 @@ def run_full_experiment():
                 'cost': record['cost'],
                 'budget': record['budget']
             })
->>>>>>> f7ba83f (Update multi-env)
         agent.budget = env.agent_budgets[agent_id]
         
         final_learning_agents.append(agent)
     
-<<<<<<< HEAD
-    # Update rule agents with their histories from the simulation
-    updated_rule_agents = []
-    for rule_agent in rule_agents:
-        # Rule agents already have their histories updated during the simulation
-        updated_rule_agents.append(rule_agent)
-    
-    # Combine all agents for visualization
-    all_agents = final_learning_agents + updated_rule_agents
-    
-    # Generate visualizations
-    generate_all_visualizations(all_agents)
-    
-    print("\n✅ Multi-agent experiment completed successfully!")
-    print("Check auction_sim/results/ for visualizations and models")
-=======
     # Combine all agents for visualization
     all_agents = final_learning_agents + rule_agents
     
@@ -437,7 +335,6 @@ def run_full_experiment():
     
     print("\n✅ Multi-agent experiment completed successfully!")
     print("Check auction_sim/results/ for models and training curves")
->>>>>>> f7ba83f (Update multi-env)
 
 if __name__ == "__main__":
     run_full_experiment()
