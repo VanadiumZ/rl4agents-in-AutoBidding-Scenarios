@@ -44,9 +44,9 @@ class MultiAgentAuctionEnv:
     def _setup_spaces(self):
         """Setup observation and action spaces for multi-agent learning"""
         
-        # Observation space for each agent (expanded with market signals)
-        obs_low = np.array([0.0, 0.0, 0.0, 0.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
-        obs_high = np.array([1.0, 1.0, 1.0, 1.0, 10.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32)
+        # Observation space for each agent (normalized values)
+        obs_low = np.array([0.0, 0.0, 0.0, 0.0, -10.0, 0.0, 0.0], dtype=np.float32)
+        obs_high = np.array([1.0, 1.0, 1.0, 1.0, 10.0, 1.0, 1.0], dtype=np.float32)
         
         self.observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
         
@@ -257,7 +257,7 @@ class MultiAgentAuctionEnv:
     
     def _calculate_reward(self, agent_id: str, auction_results: Dict, perceived_value: float) -> Tuple[float, float]:
         """
-        ENHANCED reward function with competitive pressure and long-term optimization
+        SIMPLIFIED reward function - back to basics with small competitive bonus
         """
         result = auction_results.get(agent_id)
         
@@ -274,60 +274,23 @@ class MultiAgentAuctionEnv:
         # Base reward: immediate profit (positive when profitable)
         reward = current_profit
         
-        # COMPETITIVE PRESSURE: Reward relative performance vs opponents
-        learning_agents_profit = [current_profit if aid == agent_id else 0.0 for aid in self.learning_agent_ids]
-        
-        # Calculate rule-based agents' estimated profits for comparison
-        rule_agents_profits = []
-        for aid, agent_result in auction_results.items():
-            if aid not in self.learning_agent_ids and agent_result and agent_result['won']:
-                rule_profit = self.current_true_value * agent_result['slot_ctr'] - agent_result['cost_per_click'] * agent_result['slot_ctr']
-                rule_agents_profits.append(rule_profit)
-        
-        if rule_agents_profits:
-            avg_rule_profit = np.mean(rule_agents_profits)
-            # Reward for outperforming rule-based agents
-            competitive_bonus = 0.3 * np.tanh((current_profit - avg_rule_profit) / max(abs(avg_rule_profit), 1.0))
-            reward += competitive_bonus
-        
-        # LONG-TERM ROI OPTIMIZATION
+        # Simple efficiency bonus for profitable wins
         if result and result['won'] and current_cost > 0:
             immediate_roi = (current_profit / current_cost) * 100.0
             if immediate_roi > 0:
-                # Stronger bonus for high ROI wins
-                efficiency_bonus = 0.4 * np.tanh(immediate_roi / 50.0)  # More aggressive scaling
+                # Bonus for profitable wins (encourages high ROI)
+                efficiency_bonus = 0.1 * np.tanh(immediate_roi / 100.0)
                 reward += efficiency_bonus
             else:
-                # Penalty for unprofitable wins
-                reward -= 0.2
+                # Small penalty for unprofitable wins
+                reward -= 0.05
         
-        # WIN RATE INCENTIVE: Bonus for maintaining competitive win rates
-        if hasattr(self, 'round_history') and len(self.round_history) > 100:
-            recent_wins = sum(1 for r in self.round_history[-100:] if r.get(agent_id, {}).get('won', False))
-            win_rate = recent_wins / 100.0
-            target_win_rate = 0.125  # Target 12.5% win rate (fair share for 8 agents)
-            
-            if win_rate >= target_win_rate:
-                win_bonus = 0.2 * (win_rate / target_win_rate - 1.0)
-                reward += win_bonus
-            else:
-                # Penalty for very low win rates
-                if win_rate < target_win_rate * 0.5:
-                    reward -= 0.1
+        # Small win bonus to encourage participation
+        if result and result['won']:
+            reward += 0.02
         
-        # BUDGET EFFICIENCY: Penalize poor budget management
-        budget_ratio = self.agent_budgets[agent_id] / config.AGENT_BUDGET
-        time_ratio = (self.max_rounds - self.current_round) / self.max_rounds
-        
-        if time_ratio > 0.1:  # Don't penalize near end of auction
-            ideal_budget_ratio = time_ratio * 0.8  # Should use budget more aggressively
-            if budget_ratio > ideal_budget_ratio * 1.5:  # Too conservative
-                reward -= 0.1 * (budget_ratio - ideal_budget_ratio)
-            elif budget_ratio < ideal_budget_ratio * 0.3:  # Too aggressive
-                reward -= 0.15 * (ideal_budget_ratio - budget_ratio)
-        
-        # Scale reward for training stability
-        reward = reward / 1.5
+        # Conservative scaling for stable learning
+        reward = reward / 2.0
         
         return float(reward), float(current_profit)
     

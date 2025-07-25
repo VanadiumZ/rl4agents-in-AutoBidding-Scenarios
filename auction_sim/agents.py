@@ -222,8 +222,8 @@ class MultiAgentLearningAgent(Agent):
         self.model = model
     
     def get_observation(self, perceived_value: float, current_round: int, max_rounds: int, 
-                       opponent_win_rates: Dict[str, float] = None, market_info: Dict = None) -> np.ndarray:
-        """Build enhanced observation vector with market signals"""
+                       opponent_win_rates: Dict[str, float] = None) -> np.ndarray:
+        """Build observation vector for multi-agent learning"""
         from . import config
         
         # 1. Normalized perceived value
@@ -238,51 +238,19 @@ class MultiAgentLearningAgent(Agent):
         time_ratio = (max_rounds - current_round) / max_rounds
         
         # 4. Recent win rate
-        recent_win_rate = sum(self.win_history[-50:]) / len(self.win_history[-50:]) if self.win_history else 0.0
+        recent_win_rate = sum(self.win_history) / len(self.win_history) if self.win_history else 0.0
         
         # 5. Recent average profit (normalized)
-        recent_profit = np.mean(self.profit_history[-50:]) if self.profit_history else 0.0
+        recent_profit = np.mean(self.profit_history) if self.profit_history else 0.0
         recent_profit = np.clip(recent_profit / 10.0, -1.0, 1.0)
         
-        # 6. Opponent competitive pressure
+        # 6. Opponent win rates (average if multiple opponents)
         opponent_win_rate = 0.0
         if opponent_win_rates:
             opponent_win_rate = np.mean(list(opponent_win_rates.values()))
         
-        # 7. ENHANCED: Market competition level
-        competition_level = 0.6  # Default
-        if market_info:
-            # Average number of bidders per round
-            avg_bidders = market_info.get('avg_bidders', 8) / 8.0  # Normalize by max agents
-            # Average winning bid price
-            avg_winning_price = market_info.get('avg_winning_price', 5.0) / 10.0  # Normalize
-            # Market price volatility
-            price_volatility = market_info.get('price_volatility', 0.5)
-            
-            competition_level = np.clip((avg_bidders + avg_winning_price + price_volatility) / 3.0, 0.0, 1.0)
-        
-        # 8. ENHANCED: Relative performance indicator
-        relative_performance = 0.0
-        if market_info and 'my_rank' in market_info:
-            # Agent's rank among all agents (1=best, 8=worst)
-            my_rank = market_info['my_rank']
-            relative_performance = 1.0 - (my_rank - 1.0) / 7.0  # Normalize to [0,1]
-        
-        # 9. ENHANCED: Budget pacing efficiency
-        pacing_efficiency = 0.5  # Default neutral
-        if time_ratio > 0.1:
-            ideal_budget_ratio = time_ratio * 0.8
-            if ideal_budget_ratio > 0:
-                pacing_efficiency = np.clip(budget_ratio / ideal_budget_ratio, 0.0, 2.0) / 2.0
-        
-        # 10. ENHANCED: Recent bidding aggressiveness
-        bidding_aggressiveness = 0.5  # Default neutral
-        if hasattr(self, 'bid_history') and len(self.bid_history) > 10:
-            recent_bids = self.bid_history[-10:]
-            recent_perceived_values = getattr(self, 'perceived_value_history', [])[-10:] if hasattr(self, 'perceived_value_history') else [5.0] * 10
-            if recent_perceived_values:
-                bid_ratios = [b/v if v > 0 else 1.0 for b, v in zip(recent_bids, recent_perceived_values)]
-                bidding_aggressiveness = np.clip(np.mean(bid_ratios) - 0.5, 0.0, 1.0)
+        # 7. Competition level (simplified for now)
+        competition_level = 0.6
         
         observation = np.array([
             norm_perceived_value,
@@ -291,10 +259,7 @@ class MultiAgentLearningAgent(Agent):
             recent_win_rate,
             recent_profit,
             opponent_win_rate,
-            competition_level,
-            relative_performance,
-            pacing_efficiency,
-            bidding_aggressiveness
+            competition_level
         ], dtype=np.float32)
         
         self.last_observation = observation
