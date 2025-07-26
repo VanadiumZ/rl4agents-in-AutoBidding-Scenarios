@@ -313,24 +313,44 @@ def run_full_experiment():
     # Combine all agents for visualization
     all_agents = final_learning_agents + rule_agents
     
-    # Simple results summary since utils might not exist
+    # Import and use updated utils with economic value
+    from . import utils
+    
+    # Generate comprehensive results with new economic value metrics
+    utils.generate_all_visualizations(all_agents, total_rounds=config.SIMULATION_ROUNDS)
+    
+    # Also show economic value ranking
     print("\n" + "="*80)
-    print("EXPERIMENT SUMMARY TABLE")
+    print("ECONOMIC VALUE RANKING (Based on New Multi-Objective Target)")
     print("="*80)
-    print(f"{'Agent_ID':<15} | {'Agent_Type':<12} | {'Budget_Left':<12} | {'Total_Cost':<12} | {'Win_Count':<10}")
+    
+    # Calculate economic values for ranking
+    econ_results = []
+    for agent in all_agents:
+        econ_metrics = utils.calculate_economic_value(agent, config.SIMULATION_ROUNDS, len(all_agents))
+        econ_results.append({
+            'agent': agent,
+            'economic_value': econ_metrics['economic_value'],
+            'profit_term': econ_metrics['profit_term'],
+            'efficiency_term': econ_metrics['efficiency_term'],
+            'competitive_term': econ_metrics['competitive_term']
+        })
+    
+    # Sort by economic value
+    econ_results.sort(key=lambda x: x['economic_value'], reverse=True)
+    
+    print(f"{'Rank':<4} | {'Agent_ID':<12} | {'Economic_Value':<14} | {'Profit':<10} | {'Efficiency':<10} | {'Competitive':<12}")
     print("-" * 80)
     
-    for agent in all_agents:
-        total_cost = agent.initial_budget - agent.budget
-        win_count = sum(1 for record in agent.history if record['result'] and record['result']['won'])
-        agent_type = agent.__class__.__name__.replace('Agent', '')
-        
+    for i, result in enumerate(econ_results, 1):
+        agent = result['agent']
         print(
-            f"{agent.id:<15} | "
-            f"{agent_type:<12} | "
-            f"{agent.budget:8.2f}     | "
-            f"{total_cost:8.2f}     | "
-            f"{win_count:4d}      "
+            f"{i:<4} | "
+            f"{agent.id:<12} | "
+            f"{result['economic_value']:<14.2f} | "
+            f"{result['profit_term']:<10.2f} | "
+            f"{result['efficiency_term']:<10.2f} | "
+            f"{result['competitive_term']:<12.2f}"
         )
     
     print("\n✅ Multi-agent experiment completed successfully!")
