@@ -14,6 +14,8 @@ from collections import deque
 import matplotlib.pyplot as plt
 
 from . import config
+from .config import CurriculumStage, CURRICULUM_CONFIGS
+from .curriculum_controller import CurriculumController
 from .ma_environment import MultiAgentAuctionEnv
 from .agents import TruthfulAgent, ConservativeAgent, AggressiveAgent, MultiAgentLearningAgent
 
@@ -104,7 +106,8 @@ class MAPPOTrainer:
                  vf_coef: float = 0.5,
                  ent_coef: float = 0.01,
                  max_grad_norm: float = 0.5,
-                 max_buffer_size: int = 50000):
+                 max_buffer_size: int = 50000,
+                 use_curriculum: bool = True):
         
         self.n_agents = n_agents
         self.obs_dim = obs_dim
@@ -119,6 +122,13 @@ class MAPPOTrainer:
         self.ent_coef = ent_coef
         self.max_grad_norm = max_grad_norm
         self.max_buffer_size = max_buffer_size
+        self.use_curriculum = use_curriculum
+        
+        # Curriculum controller
+        if use_curriculum:
+            self.curriculum_controller = CurriculumController(CurriculumStage.SOLO)
+        else:
+            self.curriculum_controller = None
         
         # Create networks for each agent
         self.networks = {}
@@ -152,8 +162,39 @@ class MAPPOTrainer:
         
         print(f"MAPPO Trainer initialized with {n_agents} agents")
     
+    def add_agent(self, agent_id: str):
+        """Dynamically add a new agent to the trainer"""
+        if agent_id not in self.networks:
+            # Create new network and optimizer
+            self.networks[agent_id] = ActorCriticNetwork(self.obs_dim, self.action_dim)
+            self.optimizers[agent_id] = optim.Adam(
+                self.networks[agent_id].parameters(), lr=self.lr
+            )
+            
+            # Create buffer for new agent
+            self.buffers[agent_id] = {
+                'observations': [],
+                'actions': [],
+                'rewards': [],
+                'values': [],
+                'log_probs': [],
+                'dones': []
+            }
+            
+            # Initialize training stats for new agent
+            self.training_stats['episode_rewards'][agent_id] = []
+            self.training_stats['actor_losses'][agent_id] = []
+            self.training_stats['critic_losses'][agent_id] = []
+            self.training_stats['win_rates'][agent_id] = []
+            
+            print(f"Added new agent {agent_id} to trainer")
+    
     def get_action(self, agent_id: str, obs: np.ndarray, deterministic: bool = False):
         """Get action from policy network"""
+        # Add agent if it doesn't exist
+        if agent_id not in self.networks:
+            self.add_agent(agent_id)
+        
         if not isinstance(obs, np.ndarray):
             obs = np.array(obs)
         
@@ -169,6 +210,10 @@ class MAPPOTrainer:
     
     def store_experience(self, agent_id: str, obs, action, reward, value, log_prob, done):
         """Store experience in buffer with size limit"""
+        # Add agent if it doesn't exist
+        if agent_id not in self.buffers:
+            self.add_agent(agent_id)
+            
         if len(self.buffers[agent_id]['observations']) >= self.max_buffer_size:
             for key in self.buffers[agent_id]:
                 if isinstance(self.buffers[agent_id][key], list):
@@ -288,6 +333,9 @@ class MAPPOTrainer:
                 # Calculate log probability for storage
                 obs_tensor = torch.FloatTensor(obs[agent_id]).unsqueeze(0)
                 action_tensor = torch.FloatTensor([float(action)])
+                # Ensure agent exists before evaluating
+                if agent_id not in self.networks:
+                    self.add_agent(agent_id)
                 log_prob, _, _ = self.networks[agent_id].evaluate_action(obs_tensor, action_tensor)
                 
                 actions[agent_id] = np.array([action])

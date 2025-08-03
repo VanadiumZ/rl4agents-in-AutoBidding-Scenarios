@@ -9,49 +9,90 @@ import torch
 from tqdm import tqdm
 import os
 from . import config
+from .config import CurriculumStage, CURRICULUM_CONFIGS
+from .curriculum_controller import CurriculumController
 from .ma_environment import MultiAgentAuctionEnv
 from .ma_trainer import MAPPOTrainer
 from .agents import TruthfulAgent, ConservativeAgent, AggressiveAgent, MultiAgentLearningAgent
 
-def create_rule_agents():
-    """Create rule-based opponents for training"""
+def create_rule_agents(curriculum_stage: CurriculumStage = None):
+    """Create rule-based opponents for training (curriculum-aware)"""
     rule_agents = []
     agent_id_counter = 0
     
-    for spec in config.EXPERIMENT_SETUP['agents']:
-        if spec['type'] != 'Learning':
-            for _ in range(spec['count']):
-                agent_id = f"{spec['type']}_{agent_id_counter}"
-                agent_id_counter += 1
-                
-                if spec['type'] == 'Truthful':
-                    agent = TruthfulAgent(agent_id, spec['budget'], config.AGENT_PERCEPTION_NOISE_STD)
-                elif spec['type'] == 'Conservative':
-                    agent = ConservativeAgent(agent_id, spec['budget'], config.AGENT_PERCEPTION_NOISE_STD, config.SIMULATION_ROUNDS)
-                elif spec['type'] == 'Aggressive':
-                    total_agents = sum(s['count'] for s in config.EXPERIMENT_SETUP['agents'])
-                    agent = AggressiveAgent(agent_id, spec['budget'], config.AGENT_PERCEPTION_NOISE_STD, total_agents)
-                
-                rule_agents.append(agent)
+    if curriculum_stage is not None:
+        # Use curriculum configuration
+        stage_config = CURRICULUM_CONFIGS[curriculum_stage]
+        budget = stage_config['budget']
+        max_rounds = stage_config['max_rounds']
+        
+        # Create Truthful agents
+        for i in range(stage_config['n_truthful']):
+            agent_id = f"Truthful_{agent_id_counter}"
+            agent_id_counter += 1
+            agent = TruthfulAgent(agent_id, budget, config.AGENT_PERCEPTION_NOISE_STD)
+            rule_agents.append(agent)
+        
+        # Create Conservative agents
+        for i in range(stage_config['n_conservative']):
+            agent_id = f"Conservative_{agent_id_counter}"
+            agent_id_counter += 1
+            agent = ConservativeAgent(agent_id, budget, config.AGENT_PERCEPTION_NOISE_STD, max_rounds)
+            rule_agents.append(agent)
+        
+        # Create Aggressive agents
+        for i in range(stage_config['n_aggressive']):
+            agent_id = f"Aggressive_{agent_id_counter}"
+            agent_id_counter += 1
+            total_agents = stage_config['n_learning'] + stage_config['n_truthful'] + \
+                          stage_config['n_conservative'] + stage_config['n_aggressive']
+            agent = AggressiveAgent(agent_id, budget, config.AGENT_PERCEPTION_NOISE_STD, total_agents)
+            rule_agents.append(agent)
+    else:
+        # Use default configuration
+        for spec in config.EXPERIMENT_SETUP['agents']:
+            if spec['type'] != 'Learning':
+                for _ in range(spec['count']):
+                    agent_id = f"{spec['type']}_{agent_id_counter}"
+                    agent_id_counter += 1
+                    
+                    if spec['type'] == 'Truthful':
+                        agent = TruthfulAgent(agent_id, spec['budget'], config.AGENT_PERCEPTION_NOISE_STD)
+                    elif spec['type'] == 'Conservative':
+                        agent = ConservativeAgent(agent_id, spec['budget'], config.AGENT_PERCEPTION_NOISE_STD, config.SIMULATION_ROUNDS)
+                    elif spec['type'] == 'Aggressive':
+                        total_agents = sum(s['count'] for s in config.EXPERIMENT_SETUP['agents'])
+                        agent = AggressiveAgent(agent_id, spec['budget'], config.AGENT_PERCEPTION_NOISE_STD, total_agents)
+                    
+                    rule_agents.append(agent)
     
     return rule_agents
 
-def create_learning_agents():
-    """Create learning agents with proper integration"""
+def create_learning_agents(curriculum_stage: CurriculumStage = None):
+    """Create learning agents with proper integration (curriculum-aware)"""
     learning_agents = []
     learning_agent_ids = []
     
-    learning_count = 0
-    for spec in config.EXPERIMENT_SETUP['agents']:
-        if spec['type'] == 'Learning':
-            learning_count = spec['count']
-            break
+    if curriculum_stage is not None:
+        # Use curriculum configuration
+        stage_config = CURRICULUM_CONFIGS[curriculum_stage]
+        learning_count = stage_config['n_learning']
+        budget = stage_config['budget']
+    else:
+        # Use default configuration
+        learning_count = 0
+        budget = config.AGENT_BUDGET
+        for spec in config.EXPERIMENT_SETUP['agents']:
+            if spec['type'] == 'Learning':
+                learning_count = spec['count']
+                budget = spec.get('budget', config.AGENT_BUDGET)
+                break
     
     for i in range(learning_count):
         agent_id = f"Learning_{i}"
         agent = MultiAgentLearningAgent(
             agent_id, 
-            config.AGENT_BUDGET, 
+            budget, 
             config.AGENT_PERCEPTION_NOISE_STD,
             model=None,
             is_training=True
@@ -61,12 +102,15 @@ def create_learning_agents():
     
     return learning_agents, learning_agent_ids
 
-def train_multi_agent(n_episodes: int = 100, save_models: bool = True):
+def train_multi_agent(n_episodes: int = 100, save_models: bool = True, use_curriculum: bool = True):
     """
-    Main training function for multi-agent scenario
+    Main training function for multi-agent scenario with curriculum learning
     """
     print("="*60)
-    print("MULTI-AGENT TRAINING (k=2) - FIXED VERSION")
+    if use_curriculum:
+        print("MULTI-AGENT TRAINING WITH CURRICULUM LEARNING")
+    else:
+        print("MULTI-AGENT TRAINING (k=2) - FIXED VERSION")
     print("="*60)
     
     # Set seeds for reproducibility
@@ -74,28 +118,41 @@ def train_multi_agent(n_episodes: int = 100, save_models: bool = True):
     np.random.seed(42)
     torch.manual_seed(42)
     
-    # Create agents
-    rule_agents = create_rule_agents()
-    learning_agents, learning_agent_ids = create_learning_agents()
+    # Initialize curriculum controller if needed
+    curriculum_controller = None
+    if use_curriculum:
+        curriculum_controller = CurriculumController(CurriculumStage.SOLO)
+        current_stage = curriculum_controller.current_stage
+    else:
+        current_stage = None
+    
+    # Create agents based on curriculum stage
+    rule_agents = create_rule_agents(current_stage)
+    learning_agents, learning_agent_ids = create_learning_agents(current_stage)
     
     print(f"Created {len(rule_agents)} rule-based agents")
     print(f"Created {len(learning_agents)} learning agents")
     
-    # Create environment
-    env = MultiAgentAuctionEnv(learning_agent_ids, rule_agents)
+    # Create environment with curriculum stage
+    env = MultiAgentAuctionEnv(
+        learning_agent_ids, 
+        rule_agents,
+        curriculum_stage=current_stage if current_stage else CurriculumStage.FULL
+    )
     
     # Create trainer with improved hyperparameters
     trainer = MAPPOTrainer(
         obs_dim=7,
         action_dim=1, 
-        n_agents=len(learning_agents),
+        n_agents=len(learning_agents),  # Start with current number of agents
         lr=1e-4,
         gamma=0.95,
         gae_lambda=0.9,
         clip_ratio=0.1,
         vf_coef=0.5,
         ent_coef=0.02,
-        max_grad_norm=0.3
+        max_grad_norm=0.3,
+        use_curriculum=use_curriculum
     )
     
     # Connect models to agents
@@ -117,15 +174,101 @@ def train_multi_agent(n_episodes: int = 100, save_models: bool = True):
     
     # Training loop
     print(f"Starting training for {n_episodes} episodes...")
+    if use_curriculum:
+        print(f"Starting with curriculum stage: {current_stage.name}")
     
     best_avg_reward = float('-inf')
     episode_rewards_history = []
     
     for episode in tqdm(range(n_episodes), desc="Training Episodes"):
-        # Use full simulation rounds for proper training-competition alignment
-        max_steps = config.SIMULATION_ROUNDS
+        # Use curriculum-specific or full simulation rounds
+        if use_curriculum and current_stage:
+            stage_config = CURRICULUM_CONFIGS[current_stage]
+            max_steps = stage_config['max_rounds']
+        else:
+            max_steps = config.SIMULATION_ROUNDS
             
         episode_rewards, episode_wins = trainer.train_episode(env, max_steps=max_steps)
+        
+        # Calculate episode statistics for curriculum
+        if use_curriculum and curriculum_controller:
+            # Calculate statistics
+            total_wins = sum(episode_wins.values())
+            total_agents = len(learning_agents) + len(rule_agents)
+            avg_win_rate = total_wins / (len(learning_agents) * max_steps) if len(learning_agents) > 0 else 0.0
+            
+            # Calculate ROI for learning agents
+            avg_roi = 0.0
+            budget_usage_ratio = 0.0
+            avg_bid_ratio = 1.0  # Default
+            
+            for i, agent in enumerate(learning_agents):
+                if hasattr(agent, 'get_roi'):
+                    avg_roi += agent.get_roi()
+                if hasattr(agent, 'initial_budget') and hasattr(agent, 'budget'):
+                    budget_used = agent.initial_budget - agent.budget
+                    budget_usage_ratio += budget_used / agent.initial_budget
+            
+            if len(learning_agents) > 0:
+                avg_roi /= len(learning_agents)
+                budget_usage_ratio /= len(learning_agents)
+            
+            # Update curriculum controller
+            episode_stats = {
+                'avg_win_rate': avg_win_rate,
+                'avg_roi': avg_roi,
+                'budget_usage_ratio': budget_usage_ratio,
+                'avg_bid_ratio': avg_bid_ratio,
+                'total_reward': sum(episode_rewards.values())
+            }
+            
+            curriculum_controller.update_metrics(episode_stats)
+            
+            # Check if should advance to next stage
+            if curriculum_controller.should_advance():
+                print(f"\n{'='*60}")
+                print(f"ADVANCING TO NEXT CURRICULUM STAGE!")
+                print(f"Completed {current_stage.name} after {curriculum_controller.stage_episodes} episodes")
+                print(f"Stage summary: {curriculum_controller.get_stage_summary()}")
+                print(f"{'='*60}\n")
+                
+                if curriculum_controller.advance_stage():
+                    current_stage = curriculum_controller.current_stage
+                    
+                    # Recreate environment with new stage
+                    rule_agents = create_rule_agents(current_stage)
+                    learning_agents, learning_agent_ids = create_learning_agents(current_stage)
+                    
+                    env = MultiAgentAuctionEnv(
+                        learning_agent_ids,
+                        rule_agents,
+                        curriculum_stage=current_stage
+                    )
+                    
+                    # Add new agents to trainer if needed
+                    for i, agent in enumerate(learning_agents):
+                        agent_id = f"Learning_{i}"
+                        trainer.add_agent(agent_id)  # This will only add if agent doesn't exist
+                    
+                    # Reconnect models to new agents
+                    for i, agent in enumerate(learning_agents):
+                        agent_id = f"Learning_{i}"
+                        
+                        class ModelWrapper:
+                            def __init__(self, network, trainer, agent_id):
+                                self.network = network
+                                self.trainer = trainer
+                                self.agent_id = agent_id
+                            
+                            def predict(self, obs, deterministic=False):
+                                action, _ = self.trainer.get_action(self.agent_id, obs, deterministic)
+                                return np.array([action]), None
+                        
+                        model_wrapper = ModelWrapper(trainer.networks[agent_id], trainer, agent_id)
+                        agent.set_model(model_wrapper)
+                    
+                    print(f"Now training on stage: {current_stage.name}")
+                    print(f"Agents: {len(learning_agents)} learning, {len(rule_agents)} rule-based")
         
         # Track progress
         avg_reward = np.mean(list(episode_rewards.values()))
@@ -142,7 +285,9 @@ def train_multi_agent(n_episodes: int = 100, save_models: bool = True):
             recent_avg = np.mean(episode_rewards_history[-10:]) if len(episode_rewards_history) >= 10 else avg_reward
             win_rates = {aid: (episode_wins[aid] / max_steps) for aid in learning_agent_ids}
             
-            print(f"\nEpisode {episode} (full {max_steps} rounds):")
+            print(f"\nEpisode {episode} ({max_steps} rounds):")
+            if use_curriculum and curriculum_controller:
+                print(f"  {curriculum_controller.get_progress_string()}")
             print(f"  Average reward: {recent_avg:.2f}")
             print(f"  Episode rewards: {episode_rewards}")
             print(f"  Episode wins: {episode_wins}")

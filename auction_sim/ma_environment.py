@@ -8,6 +8,7 @@ import gymnasium as gym
 from gymnasium import spaces
 from typing import Dict, List, Tuple, Any
 from . import config
+from .config import CurriculumStage, CURRICULUM_CONFIGS
 from .auction import GSPAuction
 from .agents import Agent, TruthfulAgent, ConservativeAgent, AggressiveAgent
 
@@ -17,21 +18,30 @@ class MultiAgentAuctionEnv:
     Designed for k=2 learning agents competing with rule-based agents
     """
     
-    def __init__(self, learning_agent_ids: List[str], rule_agents: List[Agent]):
+    def __init__(self, learning_agent_ids: List[str], rule_agents: List[Agent], 
+                 curriculum_stage: CurriculumStage = CurriculumStage.FULL):
         self.learning_agent_ids = learning_agent_ids
         self.rule_agents = rule_agents
         self.n_learning_agents = len(learning_agent_ids)
+        self.curriculum_stage = curriculum_stage
         
-        # Initialize auction
-        self.auction = GSPAuction(config.N_SLOTS, config.CTR_POSITIONS, config.CTR_NOISE_STD)
+        # Get curriculum configuration
+        self.stage_config = CURRICULUM_CONFIGS.get(curriculum_stage, {})
+        
+        # Initialize auction with curriculum-specific settings
+        n_slots = self.stage_config.get('n_slots', config.N_SLOTS)
+        ctr_positions = self.stage_config.get('ctr_positions', config.CTR_POSITIONS)
+        self.auction = GSPAuction(n_slots, ctr_positions, config.CTR_NOISE_STD)
         
         # Environment state
         self.current_round = 0
-        self.max_rounds = config.SIMULATION_ROUNDS
+        self.max_rounds = self.stage_config.get('max_rounds', config.SIMULATION_ROUNDS)
         self.current_true_value = 0.0
         
-        # Agent states (for learning agents)
-        self.agent_budgets = {aid: config.AGENT_BUDGET for aid in learning_agent_ids}
+        # Agent states (for learning agents) with curriculum-specific budget
+        curriculum_budget = self.stage_config.get('budget', config.AGENT_BUDGET)
+        self.agent_budgets = {aid: curriculum_budget for aid in learning_agent_ids}
+        self.initial_budgets = {aid: curriculum_budget for aid in learning_agent_ids}
         self.agent_histories = {aid: [] for aid in learning_agent_ids}
         self.round_history = []  # Track auction results for win rate calculation
         
@@ -64,8 +74,10 @@ class MultiAgentAuctionEnv:
         self.current_round = 0
         self.current_true_value = 0.0
         
-        # Reset agent states
-        self.agent_budgets = {aid: config.AGENT_BUDGET for aid in self.learning_agent_ids}
+        # Reset agent states with curriculum-specific budget
+        curriculum_budget = self.stage_config.get('budget', config.AGENT_BUDGET)
+        self.agent_budgets = {aid: curriculum_budget for aid in self.learning_agent_ids}
+        self.initial_budgets = {aid: curriculum_budget for aid in self.learning_agent_ids}
         self.agent_histories = {aid: [] for aid in self.learning_agent_ids}
         
         # Reset rule agents
@@ -104,7 +116,7 @@ class MultiAgentAuctionEnv:
         norm_perceived_value = np.clip(norm_perceived_value, 0.0, 1.0)
         
         # 2. Remaining budget ratio
-        budget_ratio = self.agent_budgets[agent_id] / config.AGENT_BUDGET
+        budget_ratio = self.agent_budgets[agent_id] / self.initial_budgets[agent_id]
         
         # 3. Time ratio
         time_ratio = (self.max_rounds - self.current_round) / self.max_rounds
@@ -257,7 +269,144 @@ class MultiAgentAuctionEnv:
     
     def _calculate_reward(self, agent_id: str, auction_results: Dict, perceived_value: float) -> Tuple[float, float]:
         """
-        SIMPLIFIED reward function - back to basics with small competitive bonus
+        Curriculum-aware reward function
+        """
+        if self.curriculum_stage == CurriculumStage.SOLO:
+            return self._stage0_reward(agent_id, auction_results, perceived_value)
+        elif self.curriculum_stage == CurriculumStage.GENTLE:
+            return self._stage1_reward(agent_id, auction_results, perceived_value)
+        elif self.curriculum_stage == CurriculumStage.MIXED:
+            return self._stage2_reward(agent_id, auction_results, perceived_value)
+        else:
+            # FULL stage with smooth transition to final objective
+            return self._full_stage_reward(agent_id, auction_results, perceived_value)
+    
+    def _stage0_reward(self, agent_id: str, auction_results: Dict, perceived_value: float) -> Tuple[float, float]:
+        """
+        Stage 0 (COOPERATIVE) reward - both agents learn together vs Truthful opponents
+        """
+        result = auction_results.get(agent_id)
+        stage_config = CURRICULUM_CONFIGS[self.curriculum_stage]
+        reward_weights = stage_config.get('reward_weights', {})
+        
+        # Calculate basic profit and cost
+        if result and result['won']:
+            true_profit = self.current_true_value * result['slot_ctr']
+            expected_cost = result['cost_per_click'] * result['slot_ctr']
+            current_profit = float(true_profit - expected_cost)
+            current_cost = float(min(expected_cost, self.agent_budgets[agent_id]))
+        else:
+            current_profit = 0.0
+            current_cost = 0.0
+        
+        # Base profit reward (scaled)
+        profit_reward = current_profit * reward_weights.get('profit', 0.3) / 10.0
+        
+        # Win bonus
+        win_bonus = 0.0
+        if result and result['won']:
+            win_bonus = reward_weights.get('win_bonus', 0.6)
+        
+        # Cooperation bonus - reward when both learning agents win
+        cooperation_bonus = 0.0
+        if result and result['won']:
+            other_learning_agents = [aid for aid in self.learning_agent_ids if aid != agent_id]
+            if other_learning_agents:
+                other_agent_won = any(
+                    auction_results.get(other_id, {}).get('won', False) 
+                    for other_id in other_learning_agents
+                )
+                if other_agent_won:
+                    cooperation_bonus = reward_weights.get('cooperation', 0.1)
+        
+        total_reward = profit_reward + win_bonus + cooperation_bonus
+        return float(total_reward), float(current_profit)
+    
+    def _stage1_reward(self, agent_id: str, auction_results: Dict, perceived_value: float) -> Tuple[float, float]:
+        """
+        Stage 1 (COMPETITIVE) reward - compete with Conservative + Truthful opponents
+        """
+        result = auction_results.get(agent_id)
+        stage_config = CURRICULUM_CONFIGS[self.curriculum_stage]
+        reward_weights = stage_config.get('reward_weights', {})
+        
+        # Calculate profit and cost
+        if result and result['won']:
+            true_profit = self.current_true_value * result['slot_ctr']
+            expected_cost = result['cost_per_click'] * result['slot_ctr']
+            current_profit = float(true_profit - expected_cost)
+            current_cost = float(min(expected_cost, self.agent_budgets[agent_id]))
+        else:
+            current_profit = 0.0
+            current_cost = 0.0
+        
+        # Base profit reward
+        profit_reward = current_profit * reward_weights.get('profit', 0.5) / 10.0
+        
+        # Win bonus
+        win_bonus = 0.0
+        if result and result['won']:
+            win_bonus = reward_weights.get('win_bonus', 0.3)
+        
+        # ROI bonus - introduce efficiency awareness
+        roi_bonus = 0.0
+        if result and result['won'] and current_cost > 0:
+            roi = (current_profit / current_cost) * 100
+            if roi > 0:
+                roi_bonus = reward_weights.get('roi', 0.2) * np.tanh(roi / 50.0)
+            else:
+                roi_bonus = -0.05  # Small penalty for unprofitable wins
+        
+        total_reward = profit_reward + win_bonus + roi_bonus
+        return float(np.clip(total_reward, -2.0, 2.0)), float(current_profit)
+    
+    def _stage2_reward(self, agent_id: str, auction_results: Dict, perceived_value: float) -> Tuple[float, float]:
+        """
+        Stage 2 (ADVANCED) reward - compete with Aggressive opponents
+        """
+        result = auction_results.get(agent_id)
+        stage_config = CURRICULUM_CONFIGS[self.curriculum_stage]
+        reward_weights = stage_config.get('reward_weights', {})
+        
+        # Calculate profit and cost
+        if result and result['won']:
+            true_profit = self.current_true_value * result['slot_ctr']
+            expected_cost = result['cost_per_click'] * result['slot_ctr']
+            current_profit = float(true_profit - expected_cost)
+            current_cost = float(min(expected_cost, self.agent_budgets[agent_id]))
+        else:
+            current_profit = 0.0
+            current_cost = 0.0
+        
+        # Base profit reward
+        profit_reward = current_profit * reward_weights.get('profit', 0.4) / 10.0
+        
+        # Win bonus
+        win_bonus = 0.0
+        if result and result['won']:
+            win_bonus = reward_weights.get('win_bonus', 0.2)
+        
+        # ROI bonus (increased importance)
+        roi_bonus = 0.0
+        if result and result['won'] and current_cost > 0:
+            roi = (current_profit / current_cost) * 100
+            if roi > 0:
+                roi_bonus = reward_weights.get('roi', 0.3) * np.tanh(roi / 50.0)
+            else:
+                roi_bonus = -0.1  # Larger penalty for unprofitable wins
+        
+        # Competition bonus - extra reward for beating aggressive opponents
+        competition_bonus = 0.0
+        if result and result['won']:
+            # Check if we beat any aggressive agents (simplified)
+            competition_bonus = reward_weights.get('competition', 0.1)
+        
+        total_reward = profit_reward + win_bonus + roi_bonus + competition_bonus
+        return float(np.clip(total_reward, -2.0, 3.0)), float(current_profit)
+    
+    def _default_reward(self, agent_id: str, auction_results: Dict, perceived_value: float) -> Tuple[float, float]:
+        """
+        Default reward function (original simplified version)
         """
         result = auction_results.get(agent_id)
         
@@ -293,6 +442,67 @@ class MultiAgentAuctionEnv:
         reward = reward / 2.0
         
         return float(reward), float(current_profit)
+    
+    def _full_stage_reward(self, agent_id: str, auction_results: Dict, perceived_value: float) -> Tuple[float, float]:
+        """
+        Stage 3 (FULL_SPECTRUM) reward - smooth transition to final objective
+        """
+        result = auction_results.get(agent_id)
+        stage_config = CURRICULUM_CONFIGS[self.curriculum_stage]
+        
+        # Calculate profit and cost
+        if result and result['won']:
+            true_profit = self.current_true_value * result['slot_ctr']
+            expected_cost = result['cost_per_click'] * result['slot_ctr']
+            current_profit = float(true_profit - expected_cost)
+            current_cost = float(min(expected_cost, self.agent_budgets[agent_id]))
+        else:
+            current_profit = 0.0
+            current_cost = 0.0
+        
+        # Get transition progress (if implemented)
+        transition_alpha = getattr(self, 'transition_alpha', 1.0)  # Default to full final objective
+        
+        if transition_alpha < 1.0:
+            # Interpolate between stage 2 and final objective
+            stage2_reward, _ = self._stage2_reward(agent_id, auction_results, perceived_value)
+            final_reward = self._final_objective_reward(agent_id, current_profit, current_cost)
+            
+            total_reward = (1 - transition_alpha) * stage2_reward + transition_alpha * final_reward
+        else:
+            # Use full final objective
+            total_reward = self._final_objective_reward(agent_id, current_profit, current_cost)
+        
+        return float(total_reward), float(current_profit)
+    
+    def _final_objective_reward(self, agent_id: str, current_profit: float, current_cost: float) -> float:
+        """
+        Final objective reward matching README formula:
+        0.5 * Profit + 0.15 * ROI * TotalCost + 0.35 * WinRate * TargetWins
+        """
+        # Profit component (scaled)
+        profit_component = 0.5 * current_profit / 10.0
+        
+        # ROI component (for current round)
+        roi_component = 0.0
+        if current_cost > 0:
+            roi = current_profit / current_cost
+            roi_component = 0.15 * roi * current_cost / 1000.0  # Scale down
+        
+        # Win rate component (approximated for current round)
+        win_component = 0.0
+        if current_profit > 0:  # Won this round
+            total_agents = len(self.learning_agent_ids) + len(self.rule_agents)
+            target_wins = 1.0 / total_agents  # Expected wins per round
+            win_component = 0.35 * target_wins
+        
+        return profit_component + roi_component + win_component
+    
+    def _get_agent_bid(self, agent_id: str) -> float:
+        """Helper to get the bid amount for an agent"""
+        # This would need to be tracked during the bidding phase
+        # For now, return a default
+        return 0.0
     
     def render(self):
         """Optional rendering for debugging"""

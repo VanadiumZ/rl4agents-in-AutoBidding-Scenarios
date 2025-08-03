@@ -1,7 +1,5 @@
 # 活动报名| 第一届中国人民大学AI智能体创新应用大赛 （百融杯）
 
-原创 GSAI [人大高瓴人工智能学院](javascript:void(0);) *2025年07月09日 18:54*
-
 ![图片](https://mmbiz.qpic.cn/mmbiz_jpg/ibywaRr30ib5icPxm4xJuAeUtjUDlgWzyLalZYSIhQJEA1FeHLNdYOffIwo5gBRhMyYWfxZ1LOiaaMcclYlmtr32cg/640?wx_fmt=jpeg&from=appmsg&randomid=kpwwzd7q&tp=wxpic&wxfrom=5&wx_lazy=1)
 
 

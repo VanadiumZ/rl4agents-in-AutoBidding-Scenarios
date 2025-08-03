@@ -1,0 +1,313 @@
+# /auction_sim/hybrid_trainer.py
+"""
+Hybrid BC + Curriculum Learning Training Pipeline
+Implements the complete "先模仿，后进阶" approach
+"""
+import numpy as np
+import torch
+import os
+from tqdm import tqdm
+from typing import Dict, List, Tuple
+import pickle
+
+from . import config
+from .config import CurriculumStage, CURRICULUM_CONFIGS
+from .bc_data_collector import BCDataCollector
+from .bc_trainer import BCTrainer
+from .ma_runner import create_rule_agents, create_learning_agents
+from .ma_environment import MultiAgentAuctionEnv
+from .ma_trainer import MAPPOTrainer
+from .curriculum_controller import CurriculumController
+
+class HybridTrainer:
+    """Hybrid BC + Curriculum Learning Trainer"""
+    
+    def __init__(self, use_bc_pretraining: bool = True, bc_episodes: int = 20):
+        self.use_bc_pretraining = use_bc_pretraining
+        self.bc_episodes = bc_episodes
+        self.bc_model_path = "auction_sim/models/bc_pretrained.pth"
+        self.bc_dataset_path = "auction_sim/bc_dataset.pkl"
+        
+        # Initialize curriculum controller with symmetric stages
+        self.curriculum_controller = CurriculumController(CurriculumStage.SOLO)
+        
+    def step1_bc_pretraining(self):
+        """Step 1: Behavioral Cloning Pre-training"""
+        print("="*70)
+        print("STEP 1: BEHAVIORAL CLONING PRE-TRAINING")
+        print("="*70)
+        
+        if not os.path.exists(self.bc_dataset_path):
+            print("Collecting BC dataset from AggressiveAgent...")
+            collector = BCDataCollector()
+            collector.collect_dataset(
+                n_episodes=self.bc_episodes,
+                save_path=self.bc_dataset_path
+            )
+        else:
+            print(f"Using existing BC dataset: {self.bc_dataset_path}")
+        
+        print("\\nTraining BC model...")
+        bc_trainer = BCTrainer()
+        bc_results = bc_trainer.train(
+            dataset_path=self.bc_dataset_path,
+            n_epochs=100,
+            save_path=self.bc_model_path
+        )
+        
+        print("\\nEvaluating BC model...")
+        bc_metrics = bc_trainer.evaluate_model(self.bc_dataset_path)
+        
+        bc_trainer.plot_training_curves("auction_sim/results/bc_training_curves.png")
+        
+        print(f"\\nBC Pre-training completed!")
+        print(f"Action Accuracy: {bc_metrics['action_accuracy_10pct']:.1%}")
+        print(f"RMSE: {bc_metrics['rmse']:.4f}")
+        
+        return bc_trainer, bc_results, bc_metrics
+    
+    def step2_load_bc_weights(self, trainer: MAPPOTrainer):
+        """Step 2: Load BC weights into RL networks"""
+        print("\\nLoading BC weights into all learning agents...")
+        
+        # Load BC model state
+        bc_state_dict = torch.load(self.bc_model_path)
+        
+        # Load weights into all learning agent networks
+        for agent_id, network in trainer.networks.items():
+            network.load_state_dict(bc_state_dict)
+            print(f"Loaded BC weights into {agent_id}")
+        
+        print("All learning agents initialized with BC weights!")
+    
+    def step3_symmetric_curriculum(self, n_episodes: int = 1000):
+        """Step 3: Symmetric Curriculum Learning"""
+        print("="*70)
+        print("STEP 3: SYMMETRIC CURRICULUM LEARNING")
+        print("="*70)
+        
+        # Start with SOLO (cooperative) stage
+        current_stage = self.curriculum_controller.current_stage
+        
+        # Create initial environment
+        rule_agents = create_rule_agents(current_stage)
+        learning_agents, learning_agent_ids = create_learning_agents(current_stage)
+        
+        env = MultiAgentAuctionEnv(
+            learning_agent_ids,
+            rule_agents,
+            curriculum_stage=current_stage
+        )
+        
+        # Create trainer
+        trainer = MAPPOTrainer(
+            obs_dim=7,
+            action_dim=1,
+            n_agents=len(learning_agents),
+            lr=1e-4,
+            gamma=0.95,
+            gae_lambda=0.9,
+            clip_ratio=0.1,
+            vf_coef=0.5,
+            ent_coef=0.02,
+            max_grad_norm=0.3,
+            use_curriculum=True
+        )
+        
+        # Step 2: Load BC weights if using pretraining
+        if self.use_bc_pretraining:
+            self.step2_load_bc_weights(trainer)
+        
+        # Connect models to agents
+        self._connect_models_to_agents(trainer, learning_agents)
+        
+        print(f"Starting symmetric curriculum training for {n_episodes} episodes...")
+        print(f"Initial stage: {current_stage.name}")
+        print(f"Agents: {len(learning_agents)} learning, {len(rule_agents)} rule-based")
+        
+        # Training loop
+        best_avg_reward = float('-inf')
+        episode_rewards_history = []
+        stage_transition_episodes = []
+        
+        for episode in tqdm(range(n_episodes), desc="Curriculum Training"):
+            # Get current stage configuration
+            stage_config = CURRICULUM_CONFIGS[current_stage]
+            max_steps = stage_config['max_rounds']
+            
+            # Training episode
+            episode_rewards, episode_wins = trainer.train_episode(env, max_steps=max_steps)
+            
+            # Calculate episode statistics
+            total_wins = sum(episode_wins.values())
+            avg_win_rate = total_wins / (len(learning_agents) * max_steps) if len(learning_agents) > 0 else 0.0
+            
+            # Calculate metrics for curriculum controller
+            avg_roi = 0.0
+            budget_usage_ratio = 0.0
+            for agent in learning_agents:
+                if hasattr(agent, 'budget') and hasattr(agent, 'initial_budget'):
+                    budget_used = agent.initial_budget - agent.budget
+                    budget_usage_ratio += budget_used / agent.initial_budget
+                # Note: ROI calculation would need access to agent's profit history
+            
+            if len(learning_agents) > 0:
+                budget_usage_ratio /= len(learning_agents)
+            
+            # Update curriculum controller
+            episode_stats = {
+                'avg_win_rate': avg_win_rate,
+                'avg_roi': avg_roi,  # Simplified for now
+                'budget_usage_ratio': budget_usage_ratio,
+                'avg_bid_ratio': 1.0,  # Simplified for now
+                'total_reward': sum(episode_rewards.values())
+            }
+            
+            self.curriculum_controller.update_metrics(episode_stats)
+            
+            # Check for stage advancement
+            if self.curriculum_controller.should_advance():
+                print(f"\\n{'='*60}")
+                print(f"ADVANCING TO NEXT CURRICULUM STAGE!")
+                print(f"Completed {current_stage.name} after {self.curriculum_controller.stage_episodes} episodes")
+                stage_summary = self.curriculum_controller.get_stage_summary()
+                print(f"Stage summary: {stage_summary}")
+                print(f"{'='*60}\\n")
+                
+                stage_transition_episodes.append(episode)
+                
+                if self.curriculum_controller.advance_stage():
+                    current_stage = self.curriculum_controller.current_stage
+                    
+                    # Recreate environment with new stage
+                    rule_agents = create_rule_agents(current_stage)
+                    learning_agents, learning_agent_ids = create_learning_agents(current_stage)
+                    
+                    env = MultiAgentAuctionEnv(
+                        learning_agent_ids,
+                        rule_agents,
+                        curriculum_stage=current_stage
+                    )
+                    
+                    # Add new agents to trainer if needed and reconnect
+                    for agent in learning_agents:
+                        trainer.add_agent(agent.id)
+                    
+                    self._connect_models_to_agents(trainer, learning_agents)
+                    
+                    print(f"Now training on stage: {current_stage.name}")
+                    print(f"Agents: {len(learning_agents)} learning, {len(rule_agents)} rule-based")
+            
+            # Track progress
+            avg_reward = np.mean(list(episode_rewards.values()))
+            episode_rewards_history.append(avg_reward)
+            
+            # Save best model
+            if avg_reward > best_avg_reward:
+                best_avg_reward = avg_reward
+                trainer.save_models("auction_sim/models/hybrid_best")
+            
+            # Logging
+            if episode % 20 == 0:
+                recent_avg = np.mean(episode_rewards_history[-20:]) if len(episode_rewards_history) >= 20 else avg_reward
+                win_rates = {aid: (episode_wins[aid] / max_steps) for aid in learning_agent_ids}
+                
+                print(f"\\nEpisode {episode} ({max_steps} rounds):")
+                print(f"  {self.curriculum_controller.get_progress_string()}")
+                print(f"  Average reward: {recent_avg:.2f}")
+                print(f"  Episode rewards: {episode_rewards}")
+                print(f"  Win rates: {win_rates}")
+        
+        # Save final models
+        trainer.save_models("auction_sim/models/hybrid_final")
+        trainer.plot_training_curves("auction_sim/results/hybrid_training_curves.png")
+        
+        print(f"\\n{'='*70}")
+        print("HYBRID TRAINING COMPLETED")
+        print(f"{'='*70}")
+        print(f"Final stage: {current_stage.name}")
+        print(f"Stage transitions at episodes: {stage_transition_episodes}")
+        print(f"Best average reward: {best_avg_reward:.2f}")
+        
+        return trainer, learning_agents, rule_agents, self.curriculum_controller
+    
+    def _connect_models_to_agents(self, trainer: MAPPOTrainer, learning_agents: List):
+        """Helper to connect trainer models to learning agents"""
+        for i, agent in enumerate(learning_agents):
+            agent_id = f"Learning_{i}"
+            
+            # Ensure agent exists in trainer
+            trainer.add_agent(agent_id)
+            
+            class ModelWrapper:
+                def __init__(self, network, trainer, agent_id):
+                    self.network = network
+                    self.trainer = trainer
+                    self.agent_id = agent_id
+                
+                def predict(self, obs, deterministic=False):
+                    action, _ = self.trainer.get_action(self.agent_id, obs, deterministic)
+                    return np.array([action]), None
+            
+            model_wrapper = ModelWrapper(trainer.networks[agent_id], trainer, agent_id)
+            agent.set_model(model_wrapper)
+    
+    def train_complete_pipeline(self, n_episodes: int = 1000):
+        """Complete training pipeline: BC + Symmetric Curriculum"""
+        print("\\n" + "="*80)
+        print("HYBRID BC + CURRICULUM LEARNING TRAINING PIPELINE")
+        print("先模仿，后进阶 (Imitate First, Then Advance)")
+        print("="*80)
+        
+        # Step 1: BC Pre-training (if enabled)
+        if self.use_bc_pretraining:
+            bc_trainer, bc_results, bc_metrics = self.step1_bc_pretraining()
+        else:
+            print("Skipping BC pre-training...")
+            bc_trainer, bc_results, bc_metrics = None, None, None
+        
+        # Step 2 & 3: Symmetric Curriculum Learning (with BC initialization)
+        trainer, learning_agents, rule_agents, curriculum_controller = self.step3_symmetric_curriculum(n_episodes)
+        
+        # Final evaluation
+        print("\\n" + "="*70)
+        print("FINAL EVALUATION")
+        print("="*70)
+        
+        final_summary = curriculum_controller.get_stage_summary()
+        print(f"Final curriculum summary: {final_summary}")
+        
+        if curriculum_controller.stage_history:
+            print("\\nCompleted curriculum stages:")
+            for stage_info in curriculum_controller.stage_history:
+                print(f"  - {stage_info['stage'].name}: {stage_info['episodes']} episodes")
+                print(f"    Final metrics: {stage_info['final_metrics']}")
+        
+        return {
+            'bc_trainer': bc_trainer,
+            'bc_results': bc_results,
+            'bc_metrics': bc_metrics,
+            'rl_trainer': trainer,
+            'learning_agents': learning_agents,
+            'rule_agents': rule_agents,
+            'curriculum_controller': curriculum_controller
+        }
+
+def main():
+    """Test the complete hybrid training pipeline"""
+    
+    # Run with BC pre-training
+    print("Testing Hybrid BC + Curriculum Learning...")
+    hybrid_trainer = HybridTrainer(
+        use_bc_pretraining=True,
+        bc_episodes=10  # Small for testing
+    )
+    
+    results = hybrid_trainer.train_complete_pipeline(n_episodes=300)
+    
+    print("\\nHybrid training pipeline completed successfully!")
+    
+    return results
+
+if __name__ == "__main__":
+    main()
