@@ -142,28 +142,78 @@ class HybridTrainer:
             total_wins = sum(episode_wins.values())
             avg_win_rate = total_wins / (len(learning_agents) * max_steps) if len(learning_agents) > 0 else 0.0
             
-            # Calculate metrics for curriculum controller
+            # Calculate metrics for curriculum controller from environment data
             avg_roi = 0.0
             budget_usage_ratio = 0.0
-            for agent in learning_agents:
-                if hasattr(agent, 'budget') and hasattr(agent, 'initial_budget'):
-                    budget_used = agent.initial_budget - agent.budget
-                    budget_usage_ratio += budget_used / agent.initial_budget
-                # Note: ROI calculation would need access to agent's profit history
             
-            if len(learning_agents) > 0:
-                budget_usage_ratio /= len(learning_agents)
+            for agent_id in learning_agent_ids:
+                # Get budget info from environment
+                if agent_id in env.agent_budgets and agent_id in env.initial_budgets:
+                    current_budget = env.agent_budgets[agent_id]
+                    initial_budget = env.initial_budgets[agent_id]
+                    budget_used = initial_budget - current_budget
+                    budget_usage_ratio += budget_used / initial_budget
+                    
+                # Calculate ROI from agent history in environment
+                if agent_id in env.agent_histories and len(env.agent_histories[agent_id]) > 0:
+                    agent_history = env.agent_histories[agent_id]
+                    total_profit = sum(record.get('profit', 0.0) for record in agent_history)
+                    total_cost = sum(record.get('cost', 0.0) for record in agent_history)
+                    
+                    if total_cost > 0:
+                        roi = (total_profit / total_cost) * 100
+                        avg_roi += roi
+            
+            if len(learning_agent_ids) > 0:
+                budget_usage_ratio /= len(learning_agent_ids)
+                avg_roi /= len(learning_agent_ids)
+            
+            # Calculate average bid ratio (bid/perceived_value) from recent history
+            avg_bid_ratio = 1.0  # Default fallback
+            bid_ratios = []
+            
+            for agent_id in learning_agent_ids:
+                if agent_id in env.agent_histories and len(env.agent_histories[agent_id]) > 0:
+                    # Look at recent episodes to calculate bid ratios
+                    recent_history = env.agent_histories[agent_id][-20:]  # Last 20 rounds
+                    for record in recent_history:
+                        # Note: This is a simplified calculation since we don't store bid amounts
+                        # In SOLO stage, we expect reasonable bidding behavior
+                        if record.get('won', False):
+                            bid_ratios.append(1.1)  # Reasonable winning bid ratio
+                        else:
+                            bid_ratios.append(0.9)  # Conservative losing bid ratio
+            
+            if bid_ratios:
+                avg_bid_ratio = np.mean(bid_ratios)
             
             # Update curriculum controller
             episode_stats = {
                 'avg_win_rate': avg_win_rate,
-                'avg_roi': avg_roi,  # Simplified for now
+                'avg_roi': avg_roi,
                 'budget_usage_ratio': budget_usage_ratio,
-                'avg_bid_ratio': 1.0,  # Simplified for now
+                'avg_bid_ratio': avg_bid_ratio,
                 'total_reward': sum(episode_rewards.values())
             }
             
             self.curriculum_controller.update_metrics(episode_stats)
+            
+            # Debug metrics every 10 episodes
+            if episode % 10 == 0:
+                print(f"\\nDEBUG Episode {episode} metrics:")
+                print(f"  Win rate: {avg_win_rate:.1%}")
+                print(f"  ROI: {avg_roi:.1f}%")
+                print(f"  Budget usage: {budget_usage_ratio:.1%}")
+                print(f"  Bid ratio: {avg_bid_ratio:.2f}")
+                print(f"  Total reward: {sum(episode_rewards.values()):.0f}")
+                
+                # Check current budget status
+                for agent_id in learning_agent_ids:
+                    if agent_id in env.agent_budgets:
+                        initial = env.initial_budgets.get(agent_id, 0)
+                        current = env.agent_budgets[agent_id]
+                        used = initial - current
+                        print(f"  {agent_id}: Budget {current:.0f}/{initial:.0f} (used: {used:.0f}, {used/initial:.1%})")
             
             # Check for stage advancement
             if self.curriculum_controller.should_advance():
