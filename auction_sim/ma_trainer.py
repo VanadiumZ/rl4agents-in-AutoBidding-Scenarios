@@ -126,7 +126,7 @@ class MAPPOTrainer:
         
         # Curriculum controller
         if use_curriculum:
-            self.curriculum_controller = CurriculumController(CurriculumStage.SOLO)
+            self.curriculum_controller = CurriculumController(CurriculumStage.STAGE_0)
         else:
             self.curriculum_controller = None
         

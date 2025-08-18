@@ -36,47 +36,38 @@
 
 ---
 
-### 第二步：课程学习的重新设计 (Symmetric & Gradual CL)
+### 第二步：课程学习的重新设计 (Progressive 9-Stage Curriculum)
 
-**目标**: 解决过渡突兀和训练不对称的问题
+**目标**: 通过细粒度的渐进式课程，平滑学习曲线
 
-#### 核心原则
+#### 核心设计原则
 
-1. **对称训练 (Symmetric Training)**: 所有 k 个学习智能体必须同时、同等地参与课程的每一个阶段
-2. **渐进式过渡 (Gradual Transition)**: 阶段之间的变化应该平滑，而不是突变
+1. **固定环境参数**: 4个广告位，CTR [0.8, 0.65, 0.5, 0.35]，价值范围(10.0, 40.0)
+2. **固定奖励函数**: 所有阶段使用统一的最终目标函数 (0.5利润 + 0.15 ROI + 0.35胜率)
+3. **渐进式对手增加**: 只通过改变对手数量和类型控制难度
 
-#### 修正后的课程阶段（以 k=2 为例）
+#### 9阶段详细设计
 
-##### 阶段 0: 协同基础 (Cooperative Basics)
-- **环境**: 2个学习智能体 + 2个"老实人"智能体
-- **奖励函数**: 侧重于合作获胜与探索
-  ```
-  R_t = w_win · WinBonus + w_profit · Profit + w_cooperation · CooperationBonus
-  ```
-  其中 CooperationBonus 在两个学习智能体都获胜时给予额外奖励
-- **成功标准**: 两个学习智能体的平均胜率 > 45%，平均ROI > 0%
+| 阶段 | 名称 | 智能体配置 | 总数 | 理论胜率 | 成功要求 |
+|------|------|-----------|------|----------|----------|
+| **Stage 0** | Solo Practice | 2L + 0对手 | 2 | 200% | 胜率≥60%, 30 eps |
+| **Stage 1** | Gentle Start | 2L + 2T | 4 | 100% | 胜率≥70%, 50 eps |
+| **Stage 2** | Basic Competition | 2L + 4T | 6 | 67% | 胜率≥50%, 80 eps |
+| **Stage 3** | Mixed Easy | 2L + 3T + 1C | 6 | 67% | 胜率≥45%, 100 eps |
+| **Stage 4** | Balanced Mix | 2L + 2T + 2C | 6 | 67% | 胜率≥40%, 120 eps |
+| **Stage 5** | First Aggressive | 2L + 2T + 1C + 1A | 6 | 67% | 胜率≥35%, 150 eps |
+| **Stage 6** | Growing Competition | 2L + 2T + 2C + 1A | 7 | 57% | 胜率≥30%, 180 eps |
+| **Stage 7** | Near Full | 2L + 2T + 1C + 2A | 7 | 57% | 胜率≥25%, 200 eps |
+| **Stage 8** | Full Competition | 2L + 2T + 2C + 2A | 8 | 50% | 胜率≥20%, 250 eps |
 
-##### 阶段 1: 竞争意识 (Competitive Awareness)
-- **环境**: 2个学习智能体 + 2个"保守派"智能体 + 2个"老实人"智能体
-- **奖励函数**: 逐渐增加个体利润和效率的权重
-  ```
-  R_t = w_profit' · Profit + w_roi' · ROI + w_win' · WinBonus
-  ```
-  其中 w_profit' > w_profit，w_roi' > 0
-- **成功标准**: 平均胜率 > 25%，平均ROI > 10%
+*L=Learning, T=Truthful, C=Conservative, A=Aggressive*
 
-##### 阶段 2: 高级对抗 (Advanced Competition)
-- **环境**: 2个学习智能体 + 2个"保守派" + 1个"激进派" + 2个"老实人"
-- **奖励函数**: 进一步强调效率和竞争力
-- **成功标准**: 平均胜率 > 20%，平均ROI > 15%
+#### 设计优势
 
-##### 阶段 3: 全面对抗 (Full Spectrum Confrontation)
-- **环境**: 完整环境，2个学习智能体 + 2个"保守派" + 2个"激进派" + 2个"老实人"
-- **奖励函数**: 平滑过渡到项目最终的多目标优化函数
-  ```
-  R_t = 0.5 · Profit + 0.15 · ROI · TotalCost + 0.35 · WinRate · TargetWins
-  ```
-- **成功标准**: 最终的KPI，如经济价值排名、胜率、ROI等达到预期
+- **极其渐进**: 从2个智能体逐步增加到8个
+- **策略递进**: Solo → vs Truthful → vs Conservative → vs Aggressive
+- **胜率平滑下降**: 200% → 100% → 67% → 57% → 50%
+- **Episodes递增**: 给予充分学习时间适应每个阶段
 
 ---
 

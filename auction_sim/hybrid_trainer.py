@@ -29,7 +29,7 @@ class HybridTrainer:
         self.bc_dataset_path = "auction_sim/bc_dataset.pkl"
         
         # Initialize curriculum controller with symmetric stages
-        self.curriculum_controller = CurriculumController(CurriculumStage.SOLO)
+        self.curriculum_controller = CurriculumController(CurriculumStage.STAGE_0)
         
     def step1_bc_pretraining(self):
         """Step 1: Behavioral Cloning Pre-training"""
@@ -80,14 +80,22 @@ class HybridTrainer:
         
         print("All learning agents initialized with BC weights!")
     
-    def step3_symmetric_curriculum(self, n_episodes: int = 1000):
-        """Step 3: Symmetric Curriculum Learning"""
+    def step3_symmetric_curriculum(self, target_final_stage: CurriculumStage = None):
+        """Step 3: Symmetric Curriculum Learning - trains until curriculum completion"""
         print("="*70)
         print("STEP 3: SYMMETRIC CURRICULUM LEARNING")
         print("="*70)
         
-        # Start with SOLO (cooperative) stage
+        # Start with initial stage
         current_stage = self.curriculum_controller.current_stage
+        
+        # Set target final stage (default to highest available stage)
+        if target_final_stage is None:
+            all_stages = list(CurriculumStage)
+            target_final_stage = all_stages[-1]  # STAGE_8
+        
+        print(f"Training target: Complete up to {target_final_stage.name}")
+        print(f"Training will continue until curriculum is completed")
         
         # Create initial environment
         rule_agents = create_rule_agents(current_stage)
@@ -121,16 +129,32 @@ class HybridTrainer:
         # Connect models to agents
         self._connect_models_to_agents(trainer, learning_agents)
         
-        print(f"Starting symmetric curriculum training for {n_episodes} episodes...")
+        print(f"Starting intelligent curriculum training...")
         print(f"Initial stage: {current_stage.name}")
         print(f"Agents: {len(learning_agents)} learning, {len(rule_agents)} rule-based")
         
-        # Training loop
+        # Training loop until curriculum completion
         best_avg_reward = float('-inf')
         episode_rewards_history = []
         stage_transition_episodes = []
+        total_episodes = 0
+        curriculum_completed = False
         
-        for episode in tqdm(range(n_episodes), desc="Curriculum Training"):
+        # Progress bar that updates dynamically
+        pbar = tqdm(desc="Curriculum Training", unit="ep")
+        
+        while not curriculum_completed:
+            # Increment episode counter
+            total_episodes += 1
+            
+            # Update progress bar
+            pbar.update(1)
+            pbar.set_postfix({
+                'Stage': current_stage.name,
+                'Stage_Eps': self.curriculum_controller.stage_episodes,
+                'Total': total_episodes
+            })
+            
             # Get current stage configuration
             stage_config = CURRICULUM_CONFIGS[current_stage]
             max_steps = stage_config['max_rounds']
@@ -199,8 +223,8 @@ class HybridTrainer:
             self.curriculum_controller.update_metrics(episode_stats)
             
             # Debug metrics every 10 episodes
-            if episode % 10 == 0:
-                print(f"\\nDEBUG Episode {episode} metrics:")
+            if total_episodes % 10 == 0:
+                print(f"\\nDEBUG Episode {total_episodes} metrics:")
                 print(f"  Win rate: {avg_win_rate:.1%}")
                 print(f"  ROI: {avg_roi:.1f}%")
                 print(f"  Budget usage: {budget_usage_ratio:.1%}")
@@ -224,10 +248,16 @@ class HybridTrainer:
                 print(f"Stage summary: {stage_summary}")
                 print(f"{'='*60}\\n")
                 
-                stage_transition_episodes.append(episode)
+                stage_transition_episodes.append(total_episodes)
                 
                 if self.curriculum_controller.advance_stage():
                     current_stage = self.curriculum_controller.current_stage
+                    
+                    # Check if we've reached the target final stage
+                    if current_stage == target_final_stage:
+                        print(f"🎉 TARGET ACHIEVED: Reached {target_final_stage.name}!")
+                        curriculum_completed = True
+                        break
                     
                     # Recreate environment with new stage
                     rule_agents = create_rule_agents(current_stage)
@@ -258,15 +288,18 @@ class HybridTrainer:
                 trainer.save_models("auction_sim/models/hybrid_best")
             
             # Logging
-            if episode % 20 == 0:
+            if total_episodes % 20 == 0:
                 recent_avg = np.mean(episode_rewards_history[-20:]) if len(episode_rewards_history) >= 20 else avg_reward
                 win_rates = {aid: (episode_wins[aid] / max_steps) for aid in learning_agent_ids}
                 
-                print(f"\\nEpisode {episode} ({max_steps} rounds):")
+                print(f"\\nEpisode {total_episodes} ({max_steps} rounds):")
                 print(f"  {self.curriculum_controller.get_progress_string()}")
                 print(f"  Average reward: {recent_avg:.2f}")
                 print(f"  Episode rewards: {episode_rewards}")
                 print(f"  Win rates: {win_rates}")
+        
+        # Close progress bar
+        pbar.close()
         
         # Save final models
         trainer.save_models("auction_sim/models/hybrid_final")
@@ -276,8 +309,15 @@ class HybridTrainer:
         print("HYBRID TRAINING COMPLETED")
         print(f"{'='*70}")
         print(f"Final stage: {current_stage.name}")
+        print(f"Total episodes trained: {total_episodes}")
         print(f"Stage transitions at episodes: {stage_transition_episodes}")
         print(f"Best average reward: {best_avg_reward:.2f}")
+        
+        # Training completion status
+        if curriculum_completed:
+            print(f"✅ CURRICULUM COMPLETED: Successfully completed training up to {target_final_stage.name}")
+        else:
+            print(f"🔍 Training stopped unexpectedly")
         
         return trainer, learning_agents, rule_agents, self.curriculum_controller
     
@@ -302,8 +342,8 @@ class HybridTrainer:
             model_wrapper = ModelWrapper(trainer.networks[agent_id], trainer, agent_id)
             agent.set_model(model_wrapper)
     
-    def train_complete_pipeline(self, n_episodes: int = 1000):
-        """Complete training pipeline: BC + Symmetric Curriculum"""
+    def train_complete_pipeline(self, target_final_stage: CurriculumStage = None):
+        """Complete training pipeline: BC + Symmetric Curriculum - trains until completion"""
         print("\\n" + "="*80)
         print("HYBRID BC + CURRICULUM LEARNING TRAINING PIPELINE")
         print("先模仿，后进阶 (Imitate First, Then Advance)")
@@ -317,7 +357,9 @@ class HybridTrainer:
             bc_trainer, bc_results, bc_metrics = None, None, None
         
         # Step 2 & 3: Symmetric Curriculum Learning (with BC initialization)
-        trainer, learning_agents, rule_agents, curriculum_controller = self.step3_symmetric_curriculum(n_episodes)
+        trainer, learning_agents, rule_agents, curriculum_controller = self.step3_symmetric_curriculum(
+            target_final_stage
+        )
         
         # Final evaluation
         print("\\n" + "="*70)
@@ -353,7 +395,8 @@ def main():
         bc_episodes=10  # Small for testing
     )
     
-    results = hybrid_trainer.train_complete_pipeline(n_episodes=300)
+    # Train until curriculum completion (default target is STAGE_8)
+    results = hybrid_trainer.train_complete_pipeline()  # 不设限制，一直训练到完成所有阶段
     
     print("\\nHybrid training pipeline completed successfully!")
     

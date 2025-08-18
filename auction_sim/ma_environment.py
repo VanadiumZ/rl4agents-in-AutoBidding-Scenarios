@@ -19,7 +19,7 @@ class MultiAgentAuctionEnv:
     """
     
     def __init__(self, learning_agent_ids: List[str], rule_agents: List[Agent], 
-                 curriculum_stage: CurriculumStage = CurriculumStage.FULL):
+                 curriculum_stage: CurriculumStage = CurriculumStage.STAGE_8):
         self.learning_agent_ids = learning_agent_ids
         self.rule_agents = rule_agents
         self.n_learning_agents = len(learning_agent_ids)
@@ -269,17 +269,10 @@ class MultiAgentAuctionEnv:
     
     def _calculate_reward(self, agent_id: str, auction_results: Dict, perceived_value: float) -> Tuple[float, float]:
         """
-        Curriculum-aware reward function
+        Fixed reward function - all stages use the same final objective function
+        0.5 * Profit + 0.15 * ROI * TotalCost + 0.35 * WinRate * TargetWins
         """
-        if self.curriculum_stage == CurriculumStage.SOLO:
-            return self._stage0_reward(agent_id, auction_results, perceived_value)
-        elif self.curriculum_stage == CurriculumStage.GENTLE:
-            return self._stage1_reward(agent_id, auction_results, perceived_value)
-        elif self.curriculum_stage == CurriculumStage.MIXED:
-            return self._stage2_reward(agent_id, auction_results, perceived_value)
-        else:
-            # FULL stage with smooth transition to final objective
-            return self._full_stage_reward(agent_id, auction_results, perceived_value)
+        return self._final_objective_reward(agent_id, auction_results, perceived_value)
     
     def _stage0_reward(self, agent_id: str, auction_results: Dict, perceived_value: float) -> Tuple[float, float]:
         """
@@ -475,12 +468,23 @@ class MultiAgentAuctionEnv:
         
         return float(total_reward), float(current_profit)
     
-    def _final_objective_reward(self, agent_id: str, current_profit: float, current_cost: float) -> float:
+    def _final_objective_reward(self, agent_id: str, auction_results: Dict, perceived_value: float) -> Tuple[float, float]:
         """
         Final objective reward matching README formula:
         0.5 * Profit + 0.15 * ROI * TotalCost + 0.35 * WinRate * TargetWins
         """
-        # Profit component (scaled)
+        # Calculate basic profit and cost
+        result = auction_results.get(agent_id)
+        if result and result['won']:
+            true_profit = self.current_true_value * result['slot_ctr']
+            expected_cost = result['cost_per_click'] * result['slot_ctr']
+            current_profit = float(true_profit - expected_cost)
+            current_cost = float(min(expected_cost, self.agent_budgets[agent_id]))
+        else:
+            current_profit = 0.0
+            current_cost = 0.0
+
+        # Profit component (scaled down for stability)
         profit_component = 0.5 * current_profit / 10.0
         
         # ROI component (for current round)
@@ -491,12 +495,13 @@ class MultiAgentAuctionEnv:
         
         # Win rate component (approximated for current round)
         win_component = 0.0
-        if current_profit > 0:  # Won this round
+        if result and result['won']:
             total_agents = len(self.learning_agent_ids) + len(self.rule_agents)
             target_wins = 1.0 / total_agents  # Expected wins per round
             win_component = 0.35 * target_wins
         
-        return profit_component + roi_component + win_component
+        total_reward = profit_component + roi_component + win_component
+        return float(total_reward), float(current_profit)
     
     def _get_agent_bid(self, agent_id: str) -> float:
         """Helper to get the bid amount for an agent"""

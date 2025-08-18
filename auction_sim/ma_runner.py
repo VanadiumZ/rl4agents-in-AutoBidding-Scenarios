@@ -121,7 +121,7 @@ def train_multi_agent(n_episodes: int = 100, save_models: bool = True, use_curri
     # Initialize curriculum controller if needed
     curriculum_controller = None
     if use_curriculum:
-        curriculum_controller = CurriculumController(CurriculumStage.SOLO)
+        curriculum_controller = CurriculumController(CurriculumStage.STAGE_0)
         current_stage = curriculum_controller.current_stage
     else:
         current_stage = None
@@ -137,7 +137,7 @@ def train_multi_agent(n_episodes: int = 100, save_models: bool = True, use_curri
     env = MultiAgentAuctionEnv(
         learning_agent_ids, 
         rule_agents,
-        curriculum_stage=current_stage if current_stage else CurriculumStage.FULL
+        curriculum_stage=current_stage if current_stage else CurriculumStage.STAGE_8
     )
     
     # Create trainer with improved hyperparameters

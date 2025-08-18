@@ -10,7 +10,7 @@ from .config import CurriculumStage, CURRICULUM_SUCCESS_CRITERIA
 class CurriculumController:
     """Controls the progression through curriculum learning stages"""
     
-    def __init__(self, start_stage: CurriculumStage = CurriculumStage.SOLO):
+    def __init__(self, start_stage: CurriculumStage = CurriculumStage.STAGE_0):
         self.current_stage = start_stage
         self.stage_episodes = 0
         self.success_episodes = 0
