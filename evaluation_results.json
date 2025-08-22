@@ -1,0 +1,92 @@
+{
+  "MAPPO": {
+    "algorithm": "MAPPO",
+    "n_episodes": 100,
+    "individual_performance": {
+      "Learning_0": {
+        "avg_win_rate": 0.2507600000000001,
+        "std_win_rate": 0.0010860521971802282,
+        "avg_roi": 105.6791491279634,
+        "std_roi": 0.5472801448831304,
+        "avg_profit": 31700.08437379322,
+        "avg_cost": 29996.536966129184,
+        "avg_budget_usage": 0.9998845655376394
+      },
+      "Learning_1": {
+        "avg_win_rate": 0.10040937500000002,
+        "std_win_rate": 0.0008087111176897469,
+        "avg_roi": 6.958452727556778,
+        "std_roi": 0.10990240461858333,
+        "avg_profit": 2086.919185071002,
+        "avg_cost": 29991.132913337628,
+        "avg_budget_usage": 0.9997044304445879
+      }
+    },
+    "aggregate_stats": {
+      "avg_win_rate": 0.17558468750000003,
+      "avg_roi": 56.31880092776009,
+      "win_rate_difference": 0.15035062500000007,
+      "roi_difference": 98.72069640040662
+    }
+  },
+  "IPPO": {
+    "algorithm": "IPPO",
+    "n_episodes": 100,
+    "individual_performance": {
+      "Learning_0": {
+        "avg_win_rate": 0.09667812499999999,
+        "std_win_rate": 0.0007801429656639869,
+        "avg_roi": 3.1134438789376038,
+        "std_roi": 0.13784674175152678,
+        "avg_profit": 933.7687993422861,
+        "avg_cost": 29991.50769177075,
+        "avg_budget_usage": 0.999716923059025
+      },
+      "Learning_1": {
+        "avg_win_rate": 0.232351875,
+        "std_win_rate": 0.0013928291520768086,
+        "avg_roi": 81.943583861338,
+        "std_roi": 0.6998246341571069,
+        "avg_profit": 24580.373848276817,
+        "avg_cost": 29996.701914863617,
+        "avg_budget_usage": 0.999890063828787
+      }
+    },
+    "aggregate_stats": {
+      "avg_win_rate": 0.164515,
+      "avg_roi": 42.52851387013779,
+      "win_rate_difference": 0.13567375000000004,
+      "roi_difference": 78.8301399824004
+    }
+  },
+  "MADDPG": {
+    "algorithm": "MADDPG",
+    "n_episodes": 100,
+    "individual_performance": {
+      "Learning_0": {
+        "avg_win_rate": 0.9222018750000003,
+        "std_win_rate": 0.0016339382781717865,
+        "avg_roi": 921.4991380693906,
+        "std_roi": 3.359324027636677,
+        "avg_profit": 246592.7664714602,
+        "avg_cost": 26760.103410571886,
+        "avg_budget_usage": 0.892003447019063
+      },
+      "Learning_1": {
+        "avg_win_rate": 0.19816687499999996,
+        "std_win_rate": 0.002245117184441605,
+        "avg_roi": 60.304765875800186,
+        "std_roi": 1.3913188154869764,
+        "avg_profit": 18086.111707226915,
+        "avg_cost": 29991.182525416443,
+        "avg_budget_usage": 0.9997060841805482
+      }
+    },
+    "aggregate_stats": {
+      "avg_win_rate": 0.5601843750000001,
+      "avg_roi": 490.90195197259544,
+      "win_rate_difference": 0.7240350000000003,
+      "roi_difference": 861.1943721935904
+    }
+  }
+}

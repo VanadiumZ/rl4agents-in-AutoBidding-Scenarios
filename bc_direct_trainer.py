@@ -446,9 +446,10 @@ class BCDirectTrainer:
             print(f"  预算使用: {final_budget_usage:.1%}")
             
             # 与理论期望对比
-            theoretical_win_rate = 2 / 8  # 2个学习智能体在8个总智能体中
+            # 4个广告位，8个智能体，每个智能体理论上有50%机会获胜
+            theoretical_win_rate = 4 / 8  # 4个广告位，8个总智能体
             print(f"\n对比分析:")
-            print(f"  理论胜率: {theoretical_win_rate:.1%}")
+            print(f"  理论胜率: {theoretical_win_rate:.1%} (4个广告位/8个智能体)")
             print(f"  实际胜率: {final_avg_win_rate:.1%}")
             print(f"  胜率效率: {final_avg_win_rate/theoretical_win_rate:.1%}")
         
