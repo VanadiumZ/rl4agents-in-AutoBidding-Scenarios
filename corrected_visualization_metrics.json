@@ -1,0 +1,57 @@
+{
+  "algorithms": ["IPPO", "MAPPO", "MADDPG"],
+  "avg_win_rates": [0.214, 0.174, 0.159],
+  "avg_rois": [95.8, 57.0, 50.1],
+  "win_rate_differences": [0.221, 0.069, 0.002],
+  "individual_performance": {
+    "IPPO": {
+      "Learning_0": {
+        "win_rate": 0.103,
+        "roi": 3.0,
+        "description": "表现较差"
+      },
+      "Learning_1": {
+        "win_rate": 0.324,
+        "roi": 188.0,
+        "description": "表现优秀"
+      }
+    },
+    "MAPPO": {
+      "Learning_0": {
+        "win_rate": 0.103,
+        "roi": 0.0,
+        "description": "高价赢，无利润"
+      },
+      "Learning_1": {
+        "win_rate": 0.172,
+        "roi": 39.0,
+        "description": "表现中等"
+      }
+    },
+    "MADDPG": {
+      "Learning_0": {
+        "win_rate": 0.158,
+        "roi": 49.0,
+        "description": "表现均衡"
+      },
+      "Learning_1": {
+        "win_rate": 0.156,
+        "roi": 47.0,
+        "description": "表现均衡"
+      }
+    }
+  },
+  "theoretical_benchmarks": {
+    "win_rate": 0.25,
+    "total_max_win_rate": 0.50,
+    "description": "8智能体4广告位环境的理论值"
+  },
+  "summary_stats": {
+    "best_performance_algorithm": "IPPO",
+    "best_win_rate": 0.214,
+    "most_balanced_algorithm": "MADDPG",
+    "min_win_rate_difference": 0.002,
+    "performance_ranking": ["IPPO", "MAPPO", "MADDPG"],
+    "balance_ranking": ["MADDPG", "MAPPO", "IPPO"]
+  }
+}

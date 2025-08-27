@@ -1,0 +1,82 @@
+{
+  "algorithms": [
+    "MAPPO",
+    "IPPO",
+    "MADDPG"
+  ],
+  "avg_win_rates": [
+    0.09719906250000002,
+    0.16455281250000003,
+    0.5718725
+  ],
+  "avg_rois": [
+    -6.846109313872664,
+    42.557309356569256,
+    579.5144516548783
+  ],
+  "win_rate_differences": [
+    0.005048124999999987,
+    0.13562437500000007,
+    0.7541375000000001
+  ],
+  "roi_differences": [
+    3.174719457861018,
+    78.89951980350098,
+    1044.912398495585
+  ],
+  "individual_performance": {
+    "MAPPO": {
+      "Learning_0": {
+        "win_rate": 0.099723125,
+        "roi": -5.258749584942155,
+        "profit": -1577.329950264894,
+        "budget_usage": 0.9998524168529498
+      },
+      "Learning_1": {
+        "win_rate": 0.09467500000000001,
+        "roi": -8.433469042803173,
+        "profit": -2529.602556067679,
+        "budget_usage": 0.9998483801336778
+      }
+    },
+    "IPPO": {
+      "Learning_0": {
+        "win_rate": 0.096740625,
+        "roi": 3.107549454818764,
+        "profit": 932.0018627515025,
+        "budget_usage": 0.9997178716544795
+      },
+      "Learning_1": {
+        "win_rate": 0.23236500000000007,
+        "roi": 82.00706925831975,
+        "profit": 24599.277000707803,
+        "budget_usage": 0.9998843876397728
+      }
+    },
+    "MADDPG": {
+      "Learning_0": {
+        "win_rate": 0.9489412500000002,
+        "roi": 1101.9706509026707,
+        "profit": 245266.0342308485,
+        "budget_usage": 0.7419541743294492
+      },
+      "Learning_1": {
+        "win_rate": 0.19480375,
+        "roi": 57.058252407085675,
+        "profit": 17117.053122749832,
+        "budget_usage": 0.999975304272017
+      }
+    }
+  },
+  "theoretical_benchmarks": {
+    "win_rate": 0.5,
+    "description": "8\u667a\u80fd\u4f534\u5e7f\u544a\u4f4d\u73af\u5883\u7684\u7406\u8bba\u80dc\u7387"
+  },
+  "summary_stats": {
+    "best_algorithm": "MADDPG",
+    "best_win_rate": 0.5718725,
+    "most_balanced_algorithm": "MAPPO",
+    "min_win_rate_difference": 0.005048124999999987,
+    "avg_performance_vs_theoretical": 0.5557495833333334
+  }
+}

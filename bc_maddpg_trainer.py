@@ -185,7 +185,7 @@ class MADDPGAgent:
             if add_noise:
                 noise = self.noise.sample() * noise_scale
                 action += noise
-                action = np.clip(action, 0.1, 2.0)  # 确保在合理范围内
+                action = np.clip(action, 0.5, 1.5)  # 与IPPO/MAPPO保持一致的动作范围
             
             return action
     
@@ -248,7 +248,6 @@ class MADDPGTrainer:
         # 训练统计
         self.training_stats = {
             'episode_rewards': {agent_id: [] for agent_id in self.agents.keys()},
-            'win_rates': {agent_id: [] for agent_id in self.agents.keys()},
             'actor_losses': {agent_id: [] for agent_id in self.agents.keys()},
             'critic_losses': {agent_id: [] for agent_id in self.agents.keys()}
         }
@@ -354,7 +353,6 @@ class MADDPGTrainer:
         """训练一个episode"""
         states = env.reset()
         episode_rewards = {agent_id: 0 for agent_id in self.agents.keys()}
-        episode_wins = {agent_id: 0 for agent_id in self.agents.keys()}
         
         # 重置噪声
         for agent in self.agents.values():
@@ -386,8 +384,6 @@ class MADDPGTrainer:
             # 更新统计
             for agent_id in self.agents.keys():
                 episode_rewards[agent_id] += rewards[agent_id]
-                if infos.get(agent_id, {}).get('won', False):
-                    episode_wins[agent_id] += 1
             
             states = next_states
             
@@ -401,9 +397,9 @@ class MADDPGTrainer:
         # 记录episode统计
         for agent_id in self.agents.keys():
             self.training_stats['episode_rewards'][agent_id].append(episode_rewards[agent_id])
-            self.training_stats['win_rates'][agent_id].append(episode_wins[agent_id] / max_steps)
         
-        return episode_rewards, episode_wins
+        # episode_wins不再使用，返回空dict保持接口一致
+        return episode_rewards, {agent_id: 0 for agent_id in self.agents.keys()}
     
     def save_models(self, save_dir):
         """保存模型"""
@@ -674,7 +670,9 @@ class BCMADDPGTrainer:
                     total_cost = sum(h.get('cost', 0) for h in history)
                     wins = sum(1 for h in history if h.get('won', False))
                     
-                    agent_stats['win_rate'] = wins / len(history) if history else 0.0
+                    # 使用实际轮数而非history长度计算胜率
+                    actual_rounds = max(h.get('round', 0) for h in history) + 1 if history else 0
+                    agent_stats['win_rate'] = wins / actual_rounds if actual_rounds > 0 else 0.0
                     if total_cost > 0:
                         agent_stats['roi'] = (total_profit / total_cost) * 100
             
