@@ -130,16 +130,17 @@ class MAPPOTrainer:
         else:
             self.curriculum_controller = None
         
-        # Create networks for each agent
+        # MAPPO: Create single shared network for all agents
+        self.shared_network = ActorCriticNetwork(obs_dim, action_dim)
+        self.shared_optimizer = optim.Adam(self.shared_network.parameters(), lr=lr)
+        
+        # All agents share the same network
         self.networks = {}
         self.optimizers = {}
-        
         for i in range(n_agents):
             agent_id = f"Learning_{i}"
-            self.networks[agent_id] = ActorCriticNetwork(obs_dim, action_dim)
-            self.optimizers[agent_id] = optim.Adam(
-                self.networks[agent_id].parameters(), lr=lr
-            )
+            self.networks[agent_id] = self.shared_network  # Point to shared network
+            self.optimizers[agent_id] = self.shared_optimizer  # Point to shared optimizer
         
         # Experience buffers
         self.buffers = {agent_id: {
@@ -309,6 +310,75 @@ class MAPPOTrainer:
             self.training_stats['actor_losses'][agent_id].append(actor_loss.item())
             self.training_stats['critic_losses'][agent_id].append(critic_loss.item())
     
+    def update_shared_policy(self, all_advantages, all_returns):
+        """Update shared policy using combined experience from all agents"""
+        # Combine observations, actions, and log_probs from all agents
+        all_obs = []
+        all_actions = []
+        all_old_log_probs = []
+        
+        for agent_id in self.buffers.keys():
+            all_obs.extend(self.buffers[agent_id]['observations'])
+            all_actions.extend(self.buffers[agent_id]['actions'])
+            all_old_log_probs.extend(self.buffers[agent_id]['log_probs'])
+        
+        # Convert to tensors
+        obs = torch.FloatTensor(all_obs)
+        actions = torch.FloatTensor(all_actions)
+        old_log_probs = torch.FloatTensor(all_old_log_probs)
+        advantages = torch.FloatTensor(all_advantages)
+        returns = torch.FloatTensor(all_returns)
+        
+        # Normalize advantages
+        adv_mean = advantages.mean()
+        adv_std = advantages.std()
+        if adv_std > 0:
+            advantages = (advantages - adv_mean) / (adv_std + 1e-8)
+        else:
+            advantages = advantages - adv_mean
+        
+        # Multiple epochs of updates on shared network
+        n_updates = 4
+        batch_size = min(256, len(obs))
+        
+        for _ in range(n_updates):
+            # Sample mini-batch
+            indices = torch.randperm(len(obs))[:batch_size]
+            
+            obs_batch = obs[indices]
+            actions_batch = actions[indices]
+            old_log_probs_batch = old_log_probs[indices]
+            advantages_batch = advantages[indices]
+            returns_batch = returns[indices]
+            
+            # Forward pass through shared network
+            log_probs, entropy, values = self.shared_network.evaluate_action(obs_batch, actions_batch)
+            
+            # PPO clipped surrogate objective
+            ratio = torch.exp(log_probs - old_log_probs_batch)
+            surr1 = ratio * advantages_batch
+            surr2 = torch.clamp(ratio, 1 - self.clip_ratio, 1 + self.clip_ratio) * advantages_batch
+            actor_loss = -torch.min(surr1, surr2).mean()
+            
+            # Value loss
+            if values.dim() > returns_batch.dim():
+                values = values.squeeze(-1)
+            elif values.dim() < returns_batch.dim():
+                returns_batch = returns_batch.squeeze(-1)
+            critic_loss = nn.MSELoss()(values, returns_batch)
+            
+            # Entropy loss
+            entropy_loss = -entropy.mean()
+            
+            # Total loss
+            total_loss = actor_loss + self.vf_coef * critic_loss + self.ent_coef * entropy_loss
+            
+            # Optimize shared network
+            self.shared_optimizer.zero_grad()
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.shared_network.parameters(), self.max_grad_norm)
+            self.shared_optimizer.step()
+    
     def clear_buffers(self):
         """Clear experience buffers"""
         for agent_id in self.buffers:
@@ -367,7 +437,10 @@ class MAPPOTrainer:
             if any(terminated.values()) or any(truncated.values()):
                 break
         
-        # Compute advantages and update policies
+        # MAPPO: Compute advantages for all agents, then update shared network once
+        all_advantages = []
+        all_returns = []
+        
         for agent_id in env.learning_agent_ids:
             # Get final value for GAE computation
             obs_tensor = torch.FloatTensor(obs[agent_id]).unsqueeze(0)
@@ -376,12 +449,16 @@ class MAPPOTrainer:
                 next_value = next_value.item()
             
             advantages, returns = self.compute_gae(agent_id, next_value)
-            self.update_policy(agent_id, advantages, returns)
+            all_advantages.extend(advantages)
+            all_returns.extend(returns)
             
             # Store episode statistics
             self.training_stats['episode_rewards'][agent_id].append(episode_rewards[agent_id])
             win_rate = episode_wins[agent_id] / max_steps
             self.training_stats['win_rates'][agent_id].append(win_rate)
+        
+        # Update shared network with combined experience from all agents
+        self.update_shared_policy(all_advantages, all_returns)
         
         self.training_stats['episode_lengths'].append(step + 1)
         self.clear_buffers()
@@ -389,20 +466,30 @@ class MAPPOTrainer:
         return episode_rewards, episode_wins
     
     def save_models(self, save_dir: str):
-        """Save trained models"""
+        """Save shared model"""
         os.makedirs(save_dir, exist_ok=True)
         
-        for agent_id, network in self.networks.items():
-            torch.save(network.state_dict(), f"{save_dir}/{agent_id}_model.pth")
+        # MAPPO: Save only the shared network
+        torch.save(self.shared_network.state_dict(), f"{save_dir}/shared_model.pth")
         
-        print(f"Models saved to {save_dir}")
+        # For compatibility, also save copies with agent names
+        for agent_id in self.networks.keys():
+            torch.save(self.shared_network.state_dict(), f"{save_dir}/{agent_id}_model.pth")
+        
+        print(f"MAPPO shared model saved to {save_dir}")
     
     def load_models(self, save_dir: str):
-        """Load trained models"""
-        for agent_id, network in self.networks.items():
-            model_path = f"{save_dir}/{agent_id}_model.pth"
-            if os.path.exists(model_path):
-                network.load_state_dict(torch.load(model_path))
+        """Load shared model"""
+        model_path = f"{save_dir}/shared_model.pth"
+        if os.path.exists(model_path):
+            self.shared_network.load_state_dict(torch.load(model_path))
+            print(f"MAPPO shared model loaded from {model_path}")
+        else:
+            # Fallback: try to load from agent-specific file
+            fallback_path = f"{save_dir}/Learning_0_model.pth"
+            if os.path.exists(fallback_path):
+                self.shared_network.load_state_dict(torch.load(fallback_path))
+                print(f"MAPPO model loaded from fallback {fallback_path}")
                 print(f"Loaded model for {agent_id}")
     
     def plot_training_curves(self, save_path: str = None):
