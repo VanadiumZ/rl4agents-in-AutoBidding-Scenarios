@@ -56,9 +56,24 @@ def main():
         # 2. 所有智能体出价
         bids = {}
         perceived_values = {}
+        
+        # 计算对手胜率（用于Learning智能体的观察）
+        opponent_win_rates = {}
+        for agent in agents:
+            if hasattr(agent, 'history') and len(agent.history) > 0:
+                wins = sum(1 for record in agent.history if record.get('result') and record['result'].get('won', False))
+                opponent_win_rates[agent.id] = wins / len(agent.history)
+            else:
+                opponent_win_rates[agent.id] = 0.0
+        
         for agent in agents:
             perceived_value = agent.perceive(true_value)
-            bid_price = agent.bid(perceived_value)
+            
+            # 为SingleAgentLearningAgent传递完整参数
+            if hasattr(agent, 'get_observation'):  # SingleAgentLearningAgent
+                bid_price = agent.bid(perceived_value, round_num, config.SIMULATION_ROUNDS, opponent_win_rates)
+            else:  # 其他智能体类型
+                bid_price = agent.bid(perceived_value)
             
             # 只有当智能体有足够预算时才参与竞价
             if agent.can_afford_bid(bid_price):

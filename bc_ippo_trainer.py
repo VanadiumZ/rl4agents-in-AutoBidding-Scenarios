@@ -19,9 +19,9 @@ from auction_sim import config
 from auction_sim.config import CurriculumStage, CURRICULUM_CONFIGS
 from auction_sim.bc_trainer import BCTrainer
 from auction_sim.bc_data_collector import BCDataCollector
-from auction_sim.ippo_trainer import IPPOTrainer, IPPOActorCriticNetwork
-from auction_sim.ma_environment import MultiAgentAuctionEnv
-from auction_sim.agents import TruthfulAgent, ConservativeAgent, AggressiveAgent, MultiAgentLearningAgent
+from auction_sim.ppo_trainer import PPOTrainer, PPOActorCriticNetwork
+from auction_sim.sa_environment import SingleAgentAuctionEnv
+from auction_sim.agents import TruthfulAgent, ConservativeAgent, AggressiveAgent, SingleAgentLearningAgent
 
 class BCIPPOTrainer:
     """BC预训练 + 独立PPO训练的混合trainer"""
@@ -127,7 +127,7 @@ class BCIPPOTrainer:
         learning_agent_ids = []
         for i in range(stage_config['n_learning']):
             agent_id = f"Learning_{i}"
-            agent = MultiAgentLearningAgent(
+            agent = SingleAgentLearningAgent(
                 agent_id=agent_id,
                 budget=stage_config['budget'],
                 perception_noise_std=config.AGENT_PERCEPTION_NOISE_STD,
@@ -141,14 +141,14 @@ class BCIPPOTrainer:
         print(f"创建了 {len(learning_agents)} 个学习智能体: {learning_agent_ids}")
         
         # 创建环境
-        env = MultiAgentAuctionEnv(
+        env = SingleAgentAuctionEnv(
             learning_agent_ids,
             rule_agents,
             curriculum_stage=self.target_stage
         )
         
         # 创建IPPO trainer - 关键：每个智能体独立的网络
-        trainer = IPPOTrainer(
+        trainer = PPOTrainer(
             obs_dim=7,
             action_dim=1,
             n_agents=len(learning_agents),

@@ -274,7 +274,7 @@ class PPOTrainer:
             for key in self.buffers[agent_id]:
                 self.buffers[agent_id][key] = []
     
-    def train_episode(self, env: MultiAgentAuctionEnv, max_steps: int = 16000):
+    def train_episode(self, env: SingleAgentAuctionEnv, max_steps: int = 16000):
         """Train for one episode with independent learning"""
         obs = env.reset()
         episode_rewards = {agent_id: 0 for agent_id in env.learning_agent_ids}

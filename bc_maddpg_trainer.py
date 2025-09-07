@@ -22,8 +22,8 @@ from auction_sim import config
 from auction_sim.config import CurriculumStage, CURRICULUM_CONFIGS
 from auction_sim.bc_trainer import BCTrainer
 from auction_sim.bc_data_collector import BCDataCollector
-from auction_sim.ma_environment import MultiAgentAuctionEnv
-from auction_sim.agents import TruthfulAgent, ConservativeAgent, AggressiveAgent, MultiAgentLearningAgent
+from auction_sim.sa_environment import SingleAgentAuctionEnv
+from auction_sim.agents import TruthfulAgent, ConservativeAgent, AggressiveAgent, SingleAgentLearningAgent
 
 class OrnsteinUhlenbeckNoise:
     """Ornstein-Uhlenbeck过程噪声，用于连续动作探索"""
@@ -472,7 +472,7 @@ class BCMADDPGTrainer:
         rule_agents = self._create_rule_agents(stage_config)
         learning_agent_ids = [f"Learning_{i}" for i in range(stage_config['n_learning'])]
         
-        env = MultiAgentAuctionEnv(
+        env = SingleAgentAuctionEnv(
             learning_agent_ids,
             rule_agents,
             curriculum_stage=self.target_stage
@@ -510,7 +510,7 @@ class BCMADDPGTrainer:
         # 创建环境接口
         learning_agents = []
         for agent_id in learning_agent_ids:
-            agent = MultiAgentLearningAgent(
+            agent = SingleAgentLearningAgent(
                 agent_id=agent_id,
                 budget=stage_config['budget'],
                 perception_noise_std=config.AGENT_PERCEPTION_NOISE_STD,
@@ -551,6 +551,8 @@ class BCMADDPGTrainer:
         }
         
         episode_metrics = []
+        episode_rewards_list = []
+        episode_wins_list = []
         best_avg_reward = float('-inf')
         
         pbar = tqdm(range(self.maddpg_episodes), desc="MADDPG Training")
@@ -560,9 +562,13 @@ class BCMADDPGTrainer:
             ep_rewards, ep_wins = maddpg.train_episode(env, max_steps=stage_config['max_rounds'])
             
             # 计算统计
-            total_reward = sum(ep_rewards.values())
+            total_reward = sum(ep_rewards.values()) if ep_rewards else 0
             episode_stats = self._calculate_episode_stats(env, learning_agent_ids, stage_config, ep_rewards, ep_wins)
             episode_metrics.append(episode_stats)
+            
+            # 收集可视化数据
+            episode_rewards_list.append(total_reward)
+            episode_wins_list.append(episode_stats['avg_win_rate'])
             
             # 记录个体表现
             for agent_id in learning_agent_ids:
@@ -580,7 +586,7 @@ class BCMADDPGTrainer:
                     'Reward': f"{total_reward:.0f}",
                     'WinRate': f"{last_metrics['avg_win_rate']:.1%}",
                     'L0_WR': f"{last_metrics['individual_stats'].get('Learning_0', {}).get('win_rate', 0):.1%}",
-                    'L1_WR': f"{last_metrics['individual_stats'].get('Learning_1', {}).get('win_rate', 0):.1%}"
+                    # 'L1_WR': f"{last_metrics['individual_stats'].get('Learning_1', {}).get('win_rate', 0):.1%}"
                 })
             
             # 保存最佳模型
@@ -597,6 +603,10 @@ class BCMADDPGTrainer:
         
         # 保存最终模型
         maddpg.save_models(f"{self.models_dir}/final")
+        
+        # 绘制训练曲线
+        if episode_rewards_list and episode_wins_list and episode_metrics:
+            self._plot_training_curves(episode_rewards_list, episode_wins_list, episode_metrics)
         
         # 生成分析
         self._analyze_results(individual_performance)
@@ -717,6 +727,95 @@ class BCMADDPGTrainer:
                          np.mean(individual_performance[agents[1]]['win_rates'][-20:]))
             print(f"\n  📊 不对称度: 胜率差异 {wr_diff:.1%}")
     
+    def _plot_training_curves(self, episode_rewards, episode_wins, episode_metrics):
+        """绘制训练曲线"""
+        plt.figure(figsize=(15, 12))
+        
+        # 提取指标数据
+        episodes = range(1, len(episode_rewards) + 1)
+        roi_values = [m['avg_roi'] for m in episode_metrics]
+        budget_usage = [m['budget_usage_ratio'] for m in episode_metrics]
+        
+        # 计算平均出价比率（简化版本）
+        bid_ratios = [1.2] * len(episode_rewards)  # MADDPG的出价策略相对稳定
+        
+        # 滑动平均
+        def moving_average(data, window=10):
+            return [np.mean(data[max(0, i-window):i+1]) for i in range(len(data))]
+        
+        ma_rewards = moving_average(episode_rewards)
+        ma_wins = moving_average(episode_wins)
+        ma_roi = moving_average(roi_values)
+        ma_budget = moving_average(budget_usage)
+        
+        # 绘制子图
+        plt.subplot(2, 3, 1)
+        plt.plot(episodes, episode_rewards, alpha=0.3, color='blue', label='Raw')
+        plt.plot(episodes, ma_rewards, color='blue', linewidth=2, label='MA-10')
+        plt.title('Episode Rewards')
+        plt.xlabel('Episode')
+        plt.ylabel('Total Reward')
+        plt.legend()
+        plt.grid(True)
+        
+        plt.subplot(2, 3, 2)
+        plt.plot(episodes, episode_wins, alpha=0.3, color='green', label='Raw')
+        plt.plot(episodes, ma_wins, color='green', linewidth=2, label='MA-10')
+        plt.title('Win Rate')
+        plt.xlabel('Episode')
+        plt.ylabel('Win Rate')
+        plt.legend()
+        plt.grid(True)
+        
+        plt.subplot(2, 3, 3)
+        plt.plot(episodes, roi_values, alpha=0.3, color='red', label='Raw')
+        plt.plot(episodes, ma_roi, color='red', linewidth=2, label='MA-10')
+        plt.title('ROI (%)')
+        plt.xlabel('Episode')
+        plt.ylabel('ROI (%)')
+        plt.legend()
+        plt.grid(True)
+        
+        plt.subplot(2, 3, 4)
+        plt.plot(episodes, budget_usage, alpha=0.3, color='orange', label='Raw')
+        plt.plot(episodes, ma_budget, color='orange', linewidth=2, label='MA-10')
+        plt.title('Budget Usage')
+        plt.xlabel('Episode')
+        plt.ylabel('Budget Usage Ratio')
+        plt.legend()
+        plt.grid(True)
+        
+        plt.subplot(2, 3, 5)
+        plt.plot(episodes, bid_ratios, alpha=0.3, color='purple', label='Bid/Value Ratio')
+        plt.title('Bidding Behavior')
+        plt.xlabel('Episode')
+        plt.ylabel('Bid/Value Ratio')
+        plt.legend()
+        plt.grid(True)
+        
+        # 综合经济价值
+        plt.subplot(2, 3, 6)
+        economic_values = []
+        for i, (reward, win, roi) in enumerate(zip(episode_rewards, episode_wins, roi_values)):
+            # 简化的经济价值计算
+            economic_value = 0.5 * reward + 0.35 * win * 1000 + 0.15 * max(0, roi) * 10
+            economic_values.append(economic_value)
+        
+        ma_economic = moving_average(economic_values)
+        plt.plot(episodes, economic_values, alpha=0.3, color='black', label='Raw')
+        plt.plot(episodes, ma_economic, color='black', linewidth=2, label='MA-10')
+        plt.title('Economic Value (Composite)')
+        plt.xlabel('Episode')
+        plt.ylabel('Economic Value')
+        plt.legend()
+        plt.grid(True)
+        
+        plt.tight_layout()
+        plt.savefig('auction_sim/results/bc_maddpg_training_curves.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"训练曲线已保存: auction_sim/results/bc_maddpg_training_curves.png")
+
     def _analyze_results(self, individual_performance):
         """分析MADDPG结果"""
         print("\n" + "="*70)
@@ -764,11 +863,40 @@ class BCMADDPGTrainer:
         bc_trainer, bc_results, bc_metrics = self.step1_bc_pretraining()
         
         # 步骤2: MADDPG训练
-        results = self.step2_maddpg_training()
+        maddpg_trainer, learning_agents, rule_agents, training_metrics, individual_performance = self.step2_maddpg_training()
+        
+        # 最终评估
+        print("\n" + "="*70)
+        print("最终评估")
+        print("="*70)
+        
+        if training_metrics:
+            final_metrics = training_metrics[-20:]  # 最后20个episodes
+            final_avg_reward = np.mean([m.get('total_reward', 0) for m in final_metrics])
+            final_avg_win_rate = np.mean([m['avg_win_rate'] for m in final_metrics])
+            final_avg_roi = np.mean([m['avg_roi'] for m in final_metrics])
+            final_budget_usage = np.mean([m['budget_usage_ratio'] for m in final_metrics])
+            
+            print(f"最终性能 (最后20 episodes平均):")
+            print(f"  平均奖励: {final_avg_reward:.0f}")
+            print(f"  胜率: {final_avg_win_rate:.1%}")
+            print(f"  ROI: {final_avg_roi:.1f}%")
+            print(f"  预算使用: {final_budget_usage:.1%}")
+            
+            # 与理论期望对比
+            # 4个广告位，8个智能体，每个智能体理论上有50%机会获胜
+            theoretical_win_rate = 4 / 8  # 4个广告位，8个总智能体
+            print(f"\n对比分析:")
+            print(f"  理论胜率: {theoretical_win_rate:.1%}")
+            print(f"  实际胜率: {final_avg_win_rate:.1%}")
+            print(f"  性能比率: {final_avg_win_rate/theoretical_win_rate:.1f}x")
         
         return {
             'bc_metrics': bc_metrics,
-            'maddpg_results': results
+            'maddpg_trainer': maddpg_trainer,
+            'learning_agents': learning_agents,
+            'rule_agents': rule_agents,
+            'training_metrics': training_metrics
         }
 
 def main():

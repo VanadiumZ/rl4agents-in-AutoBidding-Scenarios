@@ -18,7 +18,7 @@ sys.path.append('.')
 from auction_sim import config
 from auction_sim.config import CurriculumStage, CURRICULUM_CONFIGS, CURRICULUM_SUCCESS_CRITERIA
 from auction_sim.ma_runner import create_rule_agents, create_learning_agents
-from auction_sim.ma_environment import MultiAgentAuctionEnv
+from auction_sim.sa_environment import SingleAgentAuctionEnv
 from auction_sim.ma_trainer import MAPPOTrainer
 from auction_sim.curriculum_controller import CurriculumController
 
@@ -88,7 +88,7 @@ class PureCurriculumTrainer:
             rule_agents = create_rule_agents(current_stage)
             learning_agents, learning_agent_ids = create_learning_agents(current_stage)
             
-            env = MultiAgentAuctionEnv(
+            env = SingleAgentAuctionEnv(
                 learning_agent_ids,
                 rule_agents,
                 curriculum_stage=current_stage

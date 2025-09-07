@@ -90,7 +90,7 @@ EXPERIMENT_SETUP = EXPERIMENT_SETUP_K1  # 切换这里来改变实验类型
 
 CURRICULUM_CONFIGS = {
     CurriculumStage.STAGE_0: {  # Solo practice
-        'n_learning': 2,
+        'n_learning': 1,
         'n_truthful': 0,
         'n_conservative': 0,
         'n_aggressive': 0,
@@ -98,10 +98,10 @@ CURRICULUM_CONFIGS = {
         'budget': AGENT_BUDGET,  # 固定30000预算
         'max_rounds': SIMULATION_ROUNDS,  # 固定16000轮
         'ctr_positions': CTR_POSITIONS,  # 固定[0.85, 0.75, 0.65, 0.50]
-        'description': 'Solo practice - only 2 learning agents'
+        'description': 'Solo practice - only 1 learning agents'
     },
     CurriculumStage.STAGE_1: {  # Gentle start
-        'n_learning': 2,
+        'n_learning': 1,
         'n_truthful': 2,
         'n_conservative': 0,
         'n_aggressive': 0,
@@ -109,10 +109,10 @@ CURRICULUM_CONFIGS = {
         'budget': AGENT_BUDGET,
         'max_rounds': SIMULATION_ROUNDS,
         'ctr_positions': CTR_POSITIONS,
-        'description': '4 agents total, 100% win rate'
+        'description': '3 agents total, 100% win rate'
     },
     CurriculumStage.STAGE_2: {  # Basic competition
-        'n_learning': 2,
+        'n_learning': 1,
         'n_truthful': 4,
         'n_conservative': 0,
         'n_aggressive': 0,
@@ -120,10 +120,10 @@ CURRICULUM_CONFIGS = {
         'budget': AGENT_BUDGET,
         'max_rounds': SIMULATION_ROUNDS,
         'ctr_positions': CTR_POSITIONS,
-        'description': '6 agents total, 67% win rate'
+        'description': '5 agents total, 67% win rate'
     },
     CurriculumStage.STAGE_3: {  # Mixed easy
-        'n_learning': 2,
+        'n_learning': 1,
         'n_truthful': 3,
         'n_conservative': 1,
         'n_aggressive': 0,
@@ -131,10 +131,10 @@ CURRICULUM_CONFIGS = {
         'budget': AGENT_BUDGET,
         'max_rounds': SIMULATION_ROUNDS,
         'ctr_positions': CTR_POSITIONS,
-        'description': '6 agents, first conservative opponent'
+        'description': '5 agents, first conservative opponent'
     },
     CurriculumStage.STAGE_4: {  # First aggressive
-        'n_learning': 2,
+        'n_learning': 1,
         'n_truthful': 2,
         'n_conservative': 1,
         'n_aggressive': 1,
@@ -142,10 +142,10 @@ CURRICULUM_CONFIGS = {
         'budget': AGENT_BUDGET,
         'max_rounds': SIMULATION_ROUNDS,
         'ctr_positions': CTR_POSITIONS,
-        'description': '6 agents, first aggressive opponent'
+        'description': '4 agents, first aggressive opponent'
     },
     CurriculumStage.STAGE_5: {  # Balanced mix  
-        'n_learning': 2,
+        'n_learning': 1,
         'n_truthful': 2,
         'n_conservative': 2,
         'n_aggressive': 0,
@@ -153,10 +153,10 @@ CURRICULUM_CONFIGS = {
         'budget': AGENT_BUDGET,
         'max_rounds': SIMULATION_ROUNDS,
         'ctr_positions': CTR_POSITIONS,
-        'description': '6 agents, balanced truthful/conservative'
+        'description': '5 agents, balanced truthful/conservative'
     },
     CurriculumStage.STAGE_6: {  # Growing competition
-        'n_learning': 2,
+        'n_learning': 1,
         'n_truthful': 2,
         'n_conservative': 2,
         'n_aggressive': 1,
@@ -164,10 +164,10 @@ CURRICULUM_CONFIGS = {
         'budget': AGENT_BUDGET,
         'max_rounds': SIMULATION_ROUNDS,
         'ctr_positions': CTR_POSITIONS,
-        'description': '7 agents, 57% win rate'
+        'description': '6 agents, 57% win rate'
     },
     CurriculumStage.STAGE_7: {  # Near full
-        'n_learning': 2,
+        'n_learning': 1,
         'n_truthful': 2,
         'n_conservative': 1,
         'n_aggressive': 2,
@@ -175,10 +175,11 @@ CURRICULUM_CONFIGS = {
         'budget': AGENT_BUDGET,
         'max_rounds': SIMULATION_ROUNDS,
         'ctr_positions': CTR_POSITIONS,
-        'description': '7 agents, more aggressive'
+        'description': '6 agents, more aggressive'
     },
     # 单智能体环境下，K1阶段的配置
     # ￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥￥
+    # align with the k = 1 env 1,2,2,2
     CurriculumStage.STAGE_8: {  # Full competition
         'n_learning': 1,
         'n_truthful': 2,
@@ -188,7 +189,7 @@ CURRICULUM_CONFIGS = {
         'budget': AGENT_BUDGET,
         'max_rounds': SIMULATION_ROUNDS,
         'ctr_positions': CTR_POSITIONS,
-        'description': '8 agents, full competition, 50% win rate'
+        'description': '7 agents, full competition, 50% win rate'
     }
 }
 
