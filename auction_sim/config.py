@@ -14,7 +14,7 @@ class CurriculumStage(Enum):
     STAGE_8 = 8     # Full competition - 2L + 2T + 2C + 2A (8 total)
 
 # --- 模拟环境核心设置 ---
-SIMULATION_ROUNDS = 16000  # 总共进行的拍卖轮次
+SIMULATION_ROUNDS = 7000  # 总共进行的拍卖轮次
 TRAINING_EPISODES = 200  # Increased from 50 for better convergence
 
 # === OPTIMIZED PARAMETERS FOR POSITIVE ROI ===
@@ -37,6 +37,14 @@ CONSERVATIVE_AGENT_SMOOTHING = 0.8  # 用于平滑alpha变化的因子，防止�
 # "激进派"智能体参数
 AGGRESSIVE_AGENT_LOOKBACK = 15  # 回溯最近N轮的胜率
 AGGRESSIVE_AGENT_LAMBDA = 0.5  # 调整出价的敏感度 λ
+
+# --- Economic-Value (EV) reward shaping ---
+USE_EV_SHAPING = True   # 是否使用EV奖励塑形
+EV_W_PROFIT = 0.50      # 利润权重：对应 0.5 · Profit
+EV_W_ROI    = 0.15      # ROI权重：对应 0.15 · ROI · TotalCost
+EV_W_WIN    = 0.35      # 胜率权重：对应 0.35 · WinRate · TargetWins
+EV_EPS       = 1e-8      # 防止除零的小常数
+EV_SHAPING_ALPHA = 1.0  # 奖励混合系数：=1 纯EV奖励；<1 时按 alpha*EV + (1-alpha)*原reward 混合
 
 """
 --- 实验配置 ---

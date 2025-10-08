@@ -97,7 +97,7 @@ class PureCurriculumTrainer:
             # 创建trainer - 如果是第一个阶段，创建新的；否则继承前一阶段
             if current_stage == self.start_stage or 'trainer' not in locals():
                 trainer = MAPPOTrainer(
-                    obs_dim=7,
+                    obs_dim=9,  # 修复：从7更新到9（增强观测特征）
                     action_dim=1,
                     n_agents=len(learning_agents),
                     lr=5e-4,  # 适中的学习率

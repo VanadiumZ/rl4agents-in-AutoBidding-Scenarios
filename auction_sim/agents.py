@@ -76,11 +76,16 @@ class Agent(ABC):
         return float(total)
     
     def get_roi(self) -> float:
-        """计算ROI = 累计利润 / 累计成本 * 100%"""
+        """
+        计算ROI = 累计利润 / 累计成本 * 100%
+        如果成本太小（<1元），返回0避免ROI爆炸
+        """
         total_cost = self.get_total_cost()
-        if total_cost == 0:
+        # 如果成本太小（<1元），认为没有有效投资，返回0
+        if total_cost < 1.0:
             return 0.0
-        return float((self.get_cumulative_profit() / total_cost) * 100)
+        total_profit = self.get_cumulative_profit()
+        return float((total_profit / total_cost) * 100)
 
     def __repr__(self):
         return f"{self.__class__.__name__}(id={self.id}, budget={self.budget:.2f})"
@@ -227,8 +232,9 @@ class MultiAgentLearningAgent(Agent):
         # Multi-agent specific tracking
         self.win_history = deque(maxlen=100)
         self.profit_history = deque(maxlen=100)
-        self.bid_history = deque(maxlen=50)
-        self.perceived_value_history = deque(maxlen=50)
+        # P1修复：增加bid_history长度以匹配win_history，用于计算近K轮统计
+        self.bid_history = deque(maxlen=100)
+        self.perceived_value_history = deque(maxlen=100)
         
         print(f"MultiAgentLearningAgent {self.id} initialized (training={is_training})")
     
@@ -267,6 +273,37 @@ class MultiAgentLearningAgent(Agent):
         # 7. Competition level (simplified for now)
         competition_level = 0.6
         
+        # 8. P1修复：近K轮平均赢价（归一化）
+        recent_avg_bid = 0.0
+        if len(self.bid_history) > 0 and len(self.win_history) > 0:
+            # 只统计赢标的轮次，使用实际可用的最小长度
+            min_len = min(len(self.bid_history), len(self.win_history))
+            winning_bids = [bid for bid, won in zip(list(self.bid_history)[-min_len:], list(self.win_history)[-min_len:]) if won]
+            if winning_bids:
+                # 归一化到[0, 1]范围（假设最大出价约为TRUE_VALUE_RANGE上界的3倍）
+                max_bid = config.TRUE_VALUE_RANGE[1] * 3.0 if hasattr(config, 'TRUE_VALUE_RANGE') else 300.0
+                recent_avg_bid = np.mean(winning_bids) / max_bid
+                recent_avg_bid = np.clip(recent_avg_bid, 0.0, 1.0)
+        
+        # 9. P1修复：近K轮平均CPC（归一化）
+        recent_avg_cpc = 0.0
+        if len(self.history) > 0:
+            # 从历史记录中提取CPC（只统计赢标的轮次）
+            # 注意：cost_per_click存储在result字段内部
+            winning_cpcs = []
+            for record in self.history[-100:]:
+                result = record.get('result')
+                if result and result.get('won', False):
+                    cpc = result.get('cost_per_click', 0.0)
+                    if cpc > 0:
+                        winning_cpcs.append(cpc)
+            
+            if winning_cpcs:
+                # 归一化CPC（假设最大CPC约为TRUE_VALUE_RANGE上界）
+                max_cpc = config.TRUE_VALUE_RANGE[1] if hasattr(config, 'TRUE_VALUE_RANGE') else 100.0
+                recent_avg_cpc = np.mean(winning_cpcs) / max_cpc
+                recent_avg_cpc = np.clip(recent_avg_cpc, 0.0, 1.0)
+        
         observation = np.array([
             norm_perceived_value,
             budget_ratio,
@@ -274,7 +311,9 @@ class MultiAgentLearningAgent(Agent):
             recent_win_rate,
             recent_profit,
             opponent_win_rate,
-            competition_level
+            competition_level,
+            recent_avg_bid,    # P1修复：近K轮平均赢价
+            recent_avg_cpc     # P1修复：近K轮平均CPC
         ], dtype=np.float32)
         
         self.last_observation = observation
@@ -295,19 +334,28 @@ class MultiAgentLearningAgent(Agent):
             # Use model to predict action
             if hasattr(self.model, 'predict'):
                 action, _ = self.model.predict(observation, deterministic=not self.is_training)
-                action = action[0] if isinstance(action, np.ndarray) else action
+                # 确保action是标量：处理所有可能的数组格式
+                if isinstance(action, (np.ndarray, list)):
+                    action = float(action.flatten()[0])  # 展平后取第一个元素
+                else:
+                    action = float(action)
             else:
                 action = self.model.act(observation)
+                if isinstance(action, (np.ndarray, list)):
+                    action = float(action.flatten()[0])
+                else:
+                    action = float(action)
             
-            # Ensure action is in valid range
-            bid_multiplier = np.clip(action, 0.5, 1.5)
+            # P1修复：统一动作域到 [0, 1.5]
+            # 与BC网络输出和训练环境保持一致，覆盖所有合理策略
+            bid_multiplier = float(np.clip(action, 0.0, 1.5))
             
         except Exception as e:
             print(f"Warning: Model prediction failed for {self.id}: {e}")
             bid_multiplier = 1.0  # Safe fallback
         
         self.last_action = bid_multiplier
-        bid_price = perceived_value * bid_multiplier
+        bid_price = float(perceived_value * bid_multiplier)
         
         # Track bidding behavior for enhanced observations
         self.bid_history.append(bid_price)

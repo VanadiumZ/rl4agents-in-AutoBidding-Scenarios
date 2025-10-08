@@ -61,9 +61,10 @@ class ActorCriticNetwork(nn.Module):
         features = self.backbone(obs)
         
         # Actor output
+        # 🔧 修复BC兼容性: 改为[0, 1.5]与IPPO一致，移除+0.5偏置
         mean = self.actor_linear(features)
         mean = self.actor_activation(mean)
-        mean = 0.5 + mean * 1.0  # Scale to [0.5, 1.5]
+        mean = mean * 1.5  # Scale to [0, 1.5] - 与IPPO完全一致
         std = torch.exp(self.actor_logstd)
         
         # Critic output

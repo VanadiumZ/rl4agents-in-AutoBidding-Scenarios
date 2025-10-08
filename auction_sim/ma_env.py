@@ -45,6 +45,10 @@ class MultiAgentAuctionEnv:
         self.agent_histories = {aid: [] for aid in learning_agent_ids}
         self.round_history = []  # Track auction results for win rate calculation
         
+        # 累积统计（用于EV reward计算）
+        self.cum_profit = {aid: 0.0 for aid in learning_agent_ids}
+        self.cum_cost = {aid: 0.0 for aid in learning_agent_ids}
+        
         # Define observation and action spaces
         self._setup_spaces()
         
@@ -54,9 +58,9 @@ class MultiAgentAuctionEnv:
     def _setup_spaces(self):
         """Setup observation and action spaces for multi-agent learning"""
         
-        # Observation space for each agent (normalized values)
-        obs_low = np.array([0.0, 0.0, 0.0, 0.0, -10.0, 0.0, 0.0], dtype=np.float32)
-        obs_high = np.array([1.0, 1.0, 1.0, 1.0, 10.0, 1.0, 1.0], dtype=np.float32)
+        # Observation space for each agent (9维，包含近期平均赢价和CPC)
+        obs_low = np.array([0.0, 0.0, 0.0, 0.0, -10.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+        obs_high = np.array([1.0, 1.0, 1.0, 1.0, 10.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32)
         
         self.observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
         
@@ -79,6 +83,10 @@ class MultiAgentAuctionEnv:
         self.agent_budgets = {aid: curriculum_budget for aid in self.learning_agent_ids}
         self.initial_budgets = {aid: curriculum_budget for aid in self.learning_agent_ids}
         self.agent_histories = {aid: [] for aid in self.learning_agent_ids}
+        
+        # 重置累积统计（用于EV reward）
+        self.cum_profit = {aid: 0.0 for aid in self.learning_agent_ids}
+        self.cum_cost = {aid: 0.0 for aid in self.learning_agent_ids}
         
         # Reset rule agents
         for agent in self.rule_agents:
@@ -164,6 +172,40 @@ class MultiAgentAuctionEnv:
         total_agents = len(self.learning_agent_ids) + len(self.rule_agents)
         competition_level = min(total_agents / 10.0, 1.0)
         
+        # 8. 近K轮平均赢价（归一化）
+        recent_avg_bid = 0.0
+        if recent_rounds > 0:
+            recent_history = self.agent_histories[agent_id][-recent_rounds:]
+            winning_bids = []
+            for record in recent_history:
+                if record.get('won', False):
+                    bid = record.get('bid', 0.0)
+                    if bid > 0:
+                        winning_bids.append(bid)
+            
+            if winning_bids:
+                # 归一化到[0, 1]范围（假设最大出价比率为3.0，最大perceived_value为100）
+                max_bid = config.TRUE_VALUE_RANGE[1] * 3.0
+                recent_avg_bid = np.mean(winning_bids) / max_bid
+                recent_avg_bid = np.clip(recent_avg_bid, 0.0, 1.0)
+        
+        # 9. 近K轮平均CPC（归一化）
+        recent_avg_cpc = 0.0
+        if recent_rounds > 0:
+            recent_history = self.agent_histories[agent_id][-recent_rounds:]
+            winning_cpcs = []
+            for record in recent_history:
+                if record.get('won', False):
+                    cpc = record.get('cost_per_click', 0.0)
+                    if cpc > 0:
+                        winning_cpcs.append(cpc)
+            
+            if winning_cpcs:
+                # 归一化CPC（假设最大CPC约为TRUE_VALUE_RANGE上界）
+                max_cpc = config.TRUE_VALUE_RANGE[1]
+                recent_avg_cpc = np.mean(winning_cpcs) / max_cpc
+                recent_avg_cpc = np.clip(recent_avg_cpc, 0.0, 1.0)
+        
         observation = np.array([
             norm_perceived_value,
             budget_ratio,
@@ -171,7 +213,9 @@ class MultiAgentAuctionEnv:
             recent_win_rate,
             recent_profit,
             opponent_win_rate,
-            competition_level
+            competition_level,
+            recent_avg_bid,    # 第8维
+            recent_avg_cpc     # 第9维
         ], dtype=np.float32)
         
         return observation
@@ -245,7 +289,8 @@ class MultiAgentAuctionEnv:
                 'cost': float(cost),
                 'budget': float(self.agent_budgets[agent_id]),
                 'perceived_value': float(perceived_values.get(agent_id, 0.0)),
-                'bid': float(all_bids.get(agent_id, 0.0))
+                'bid': float(all_bids.get(agent_id, 0.0)),
+                'cost_per_click': float(result.get('cost_per_click', 0.0)) if result else 0.0  # 添加CPC记录
             })
         
         # Update rule agents
@@ -296,15 +341,14 @@ class MultiAgentAuctionEnv:
         
         # 预算节奏约束：防止预算超前消耗
         spent_ratio = 1.0 - (self.agent_budgets[agent_id] / self.initial_budgets[agent_id])
-        time_ratio = (self.max_rounds - self.current_round) / self.max_rounds
-        pace_penalty = -0.05 * max(0.0, spent_ratio - (1.0 - time_ratio))
+        time_ratio = self.current_round / self.max_rounds  # FIX: time_ratio 应该是已进行的回合比例
+        pace_penalty = -0.05 * max(0.0, spent_ratio - time_ratio)
         
+        # 用于学习的奖励 = 真实利润 + 预算惩罚
         reward = current_profit + pace_penalty
         
-        # 返回修正后的奖励，同时保留复合奖励用于分析
-        complex_reward, _ = self._final_objective_reward(agent_id, auction_results, perceived_value)
-        
-        return float(reward), float(reward)
+        # FIX: 返回塑形后的 reward 和 纯粹的 current_profit
+        return float(reward), float(current_profit)
     
     def _stage0_reward(self, agent_id: str, auction_results: Dict, perceived_value: float) -> Tuple[float, float]:
         """
@@ -502,10 +546,9 @@ class MultiAgentAuctionEnv:
     
     def _final_objective_reward(self, agent_id: str, auction_results: Dict, perceived_value: float) -> Tuple[float, float]:
         """
-        Optimized reward function based on bb.md recommendations:
-        - Profit component: enlarged scale for better learning signal
-        - ROI component: smooth tanh signal (profitable=positive, loss=negative)
-        - Win rate: interval constraint instead of unlimited reward
+        Economic Value (EV) reward shaping (对齐ma_environment.py):
+        Maps README formula to per-step rewards:
+        0.5 * Profit_t + 0.15 * ROI_frac_t * ΔCost_t + 0.35 * Win_t
         """
         # Calculate basic profit and cost
         result = auction_results.get(agent_id)
@@ -517,40 +560,39 @@ class MultiAgentAuctionEnv:
         else:
             current_profit = 0.0
             current_cost = 0.0
-
-        # 1) Profit component (enlarged scale from /10 to /2 for better gradient)
-        profit_component = 0.5 * (current_profit / 2.0)
         
-        # 2) ROI component (smooth tanh signal, profitable=positive, loss=negative)
-        roi_component = 0.0
-        if current_cost > 0:
-            roi = current_profit / current_cost
-            roi_component = 0.25 * np.tanh(roi)  # Range [-0.25, 0.25]
+        # 更新累积统计（在奖励计算之前）
+        self.cum_profit[agent_id] += current_profit
+        self.cum_cost[agent_id] += current_cost
         
-        # 3) Win rate interval constraint (floor/cap approach)
-        # Calculate recent win rate from agent history
-        recent = min(len(self.agent_histories[agent_id]), 100)
-        recent_hist = self.agent_histories[agent_id][-recent:] if recent > 0 else []
-        recent_wr = (sum(1 for h in recent_hist if h.get('won', False)) / recent) if recent > 0 else 0.0
+        if config.USE_EV_SHAPING:
+            # EV-aligned reward shaping
+            # 1) Profit component (当步利润)
+            profit_component = config.EV_W_PROFIT * current_profit
+            
+            # 2) ROI component (使用累积ROI * 当步成本)
+            roi_component = 0.0
+            if self.cum_cost[agent_id] > config.EV_EPS:
+                roi_frac = self.cum_profit[agent_id] / self.cum_cost[agent_id]  # 小数形式
+                roi_component = config.EV_W_ROI * roi_frac * current_cost
+            
+            # 3) Win component (当步是否获胜)
+            win_component = 0.0
+            if result and result['won']:
+                win_component = config.EV_W_WIN * 1.0
+            
+            total_reward = profit_component + roi_component + win_component
+            
+            # 可选：与原奖励混合
+            if config.EV_SHAPING_ALPHA < 1.0:
+                # 原始奖励（简化版）
+                original_reward = current_profit / 10.0  # 原来的缩放
+                total_reward = config.EV_SHAPING_ALPHA * total_reward + (1 - config.EV_SHAPING_ALPHA) * original_reward
+        else:
+            # 回退到原始奖励
+            total_reward = current_profit / 10.0  # 保持原缩放
         
-        # Target win rate based on total agents (baseline)
-        total_agents = len(self.learning_agent_ids) + len(self.rule_agents)
-        baseline = 1.0 / max(total_agents, 1)  # ~12.5% in 8-agent scenario
-        win_floor, win_cap = 0.8 * baseline, 1.2 * baseline  # Target interval [0.8b, 1.2b]
-        
-        # Win rate component: encourage when below floor, penalize when above cap
-        lambda_win = 0.15  # Adjustable strength
-        win_floor_bonus = lambda_win * max(0.0, win_floor - recent_wr)
-        win_over_penalty = 0.05 * max(0.0, recent_wr - win_cap)
-        
-        # Small shaping bonus for current win (prevent complete abandonment)
-        won_shaping = 0.02 if (result and result.get('won', False)) else 0.0
-        
-        win_component = win_floor_bonus - win_over_penalty + won_shaping
-        
-        # 4) Total reward
-        total_reward = profit_component + roi_component + win_component
-        return float(np.clip(total_reward, -2.0, 3.0)), float(current_profit)
+        return float(total_reward), float(current_profit)
     
     def _get_agent_bid(self, agent_id: str) -> float:
         """Helper to get the bid amount for an agent"""

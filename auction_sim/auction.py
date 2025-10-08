@@ -6,8 +6,19 @@ from . import config
 class GSPAuction:
     """
     实现广义第二价格拍卖 (Generalized Second-Price Auction, GSP)
+    
+    修复：添加保底价（reserve price）机制，防止免费点击漏洞
     """
-    def __init__(self, n_slots: int, ctr_positions: np.ndarray, ctr_noise_std: float):
+    def __init__(self, n_slots: int, ctr_positions: np.ndarray, ctr_noise_std: float, 
+                 reserve_per_slot: np.ndarray = None, qualities: Dict[str, float] = None):
+        """
+        Args:
+            n_slots: 广告位数量
+            ctr_positions: 每个位置的基础CTR
+            ctr_noise_std: CTR噪声标准差
+            reserve_per_slot: 每个位置的保底价（防止免费点击）。如果为None，使用默认值
+            qualities: agent的质量分 {agent_id: quality}，默认为1.0
+        """
         self.n_slots = n_slots
         
         # 确保CTR_POSITIONS数组长度与N_SLOTS匹配
@@ -28,9 +39,25 @@ class GSPAuction:
                 self.ctr_positions = ctr_positions[:n_slots]
         else:
             self.ctr_positions = ctr_positions
-            
+        
+        # 设置保底价（每个位置的最低CPC）
+        if reserve_per_slot is None:
+            # 默认保底价：按位置递减，确保即使只有1个参与者也要付费
+            # 使用TRUE_VALUE的10-20%作为保底价
+            base_reserve = config.TRUE_VALUE_RANGE[0] * 0.15  # 约1.5
+            self.reserve_per_slot = np.array([
+                base_reserve * (1.0 - 0.1 * i) for i in range(n_slots)
+            ])
+        else:
+            self.reserve_per_slot = np.array(reserve_per_slot)
+        
+        # 质量分（默认所有agent质量为1.0）
+        self.qualities = qualities if qualities is not None else {}
+        
         self.ctr_noise_std = ctr_noise_std
-        print(f"GSP Auction initialized with {n_slots} slots, CTR: {self.ctr_positions}")
+        print(f"GSP Auction initialized with {n_slots} slots")
+        print(f"  CTR: {self.ctr_positions}")
+        print(f"  Reserve prices: {self.reserve_per_slot}")
 
     def run_auction(self, bids: Dict[str, float]) -> Dict[str, Dict]:
         """
@@ -64,17 +91,36 @@ class GSPAuction:
         noisy_ctrs = self.ctr_positions * (1 + np.random.uniform(-self.ctr_noise_std, self.ctr_noise_std, size=self.n_slots))
         noisy_ctrs = np.clip(noisy_ctrs, 0, 1) # 确保CTR在[0,1]范围内
 
-        # 3. 计算赢家的成本和信息
+        # 3. 计算赢家的成本和信息（带保底价机制）
         for i in range(len(winners)):
             agent_id, bid_price = winners[i]
+            quality_i = self.qualities.get(agent_id, 1.0)
             
-            # 支付价格是下一位的出价
+            # 计算下一名的AdRank（可能来自下一个赢家或第一个输家）
             if i + 1 < len(winners):
-                cost_per_click = winners[i+1][1]
-            elif losers: # 如果是最后一个赢家，支付第一名输家的出价
-                cost_per_click = losers[0][1]
-            else: # 如果赢家数量小于广告位数且没有输家
-                cost_per_click = 0.0
+                # 下一个赢家的出价
+                next_agent, next_bid = winners[i+1]
+                next_quality = self.qualities.get(next_agent, 1.0)
+                next_rank = next_bid * next_quality
+            elif losers:
+                # 第一个输家的出价
+                next_agent, next_bid = losers[0]
+                next_quality = self.qualities.get(next_agent, 1.0)
+                next_rank = next_bid * next_quality
+            else:
+                # 没有后继者，只使用保底价
+                next_rank = 0.0
+            
+            # 本位保底价（防止免费点击）
+            reserve_price = self.reserve_per_slot[i] if i < len(self.reserve_per_slot) else 0.0
+            
+            # GSP定价：max(保底价, 下一名出价) / 自己的质量分
+            # 关键修复：即使没有竞争对手，也要支付保底价
+            price_rank = max(reserve_price, next_rank)
+            cost_per_click = price_rank / max(quality_i, 1e-8)
+            
+            # 确保CPC不超过自己的出价（越界保护）
+            cost_per_click = min(bid_price, cost_per_click)
 
             results[agent_id] = {
                 'rank': i + 1,

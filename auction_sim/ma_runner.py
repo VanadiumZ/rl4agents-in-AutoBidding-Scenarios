@@ -157,7 +157,7 @@ def train_multi_agent(n_episodes: int = 100, save_models: bool = True, use_curri
     
     # Create trainer with improved hyperparameters
     trainer = MAPPOTrainer(
-        obs_dim=7,
+        obs_dim=9,  # 修复：从7更新到9（增强观测特征）
         action_dim=1, 
         n_agents=len(learning_agents),  # Start with current number of agents
         lr=1e-4,

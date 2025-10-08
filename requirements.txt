@@ -3,3 +3,4 @@ gymnasium
 matplotlib
 pandas
 scipy
+tqdm
